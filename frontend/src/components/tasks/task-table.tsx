@@ -1,0 +1,187 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { Avatar, AvatarAdd } from "@/components/ui/avatar";
+import { PriorityChip } from "@/components/ui/chips";
+import { CaretDownIcon, CaretRightIcon, MoreHorizontalIcon, PlusIcon } from "@/components/ui/icons";
+import { cn, formatDateLong } from "@/lib/utils";
+import type { FieldKey, Task } from "@/lib/types";
+
+export type TaskTableProps = {
+  group: string;
+  tasks: Task[];
+  fields: Record<FieldKey, boolean>;
+  /** Column header for the first column ("Task", "Projects", ...). */
+  itemLabel?: string;
+  addLabel?: string;
+  /** Row links are omitted for subtask tables, which aren't navigable. */
+  linkPrefix?: string;
+};
+
+/**
+ * One collapsible status section rendered as a card-wrapped table.
+ *
+ * Below `md` the table switches to a stacked card layout — a 5-column grid at
+ * 375px would either overflow or crush the task title to a few characters.
+ */
+export function TaskTable({
+  group,
+  tasks,
+  fields,
+  itemLabel = "Task",
+  addLabel = "Add Task",
+  linkPrefix,
+}: TaskTableProps) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <section className="mb-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="mb-1.5 flex items-center gap-1.5 rounded px-0.5 py-0.5 text-[13px] font-medium text-[var(--text)] transition-colors hover:text-[var(--text-muted)]"
+      >
+        {open ? (
+          <CaretDownIcon size={13} className="text-[var(--text-muted)]" />
+        ) : (
+          <CaretRightIcon size={13} className="text-[var(--text-muted)]" />
+        )}
+        {group}
+      </button>
+
+      {open ? (
+        <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+          {/* Header row — desktop only */}
+          <div
+            className="hidden items-center gap-3 border-b border-[var(--border)] bg-[var(--table-head-bg)] px-4 py-2.5 text-[12px] font-medium text-[var(--text-muted)] md:flex"
+            role="row"
+          >
+            <span className="min-w-0 flex-1">{itemLabel}</span>
+            {fields.priority ? <span className="w-[88px] shrink-0">Priority</span> : null}
+            {fields.members ? <span className="w-[76px] shrink-0">Members</span> : null}
+            {fields.dueDate ? <span className="w-[104px] shrink-0">Due Date</span> : null}
+            <span className="w-[52px] shrink-0 text-right">Actions</span>
+          </div>
+
+          <ul>
+            {tasks.map((task) => {
+              const title = linkPrefix ? (
+                <Link
+                  href={`${linkPrefix}/${task.id}`}
+                  className="truncate text-[13px] text-[var(--text)] hover:underline"
+                >
+                  {task.title}
+                </Link>
+              ) : (
+                <span className="truncate text-[13px] text-[var(--text)]">{task.title}</span>
+              );
+
+              return (
+                <li
+                  key={task.id}
+                  className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--hover)]"
+                >
+                  {/* Desktop row */}
+                  <div className="hidden items-center gap-3 px-4 py-2.5 md:flex">
+                    <div className="min-w-0 flex-1">{title}</div>
+
+                    {fields.priority ? (
+                      <div className="w-[88px] shrink-0">
+                        <PriorityChip priority={task.priority} />
+                      </div>
+                    ) : null}
+
+                    {fields.members ? (
+                      <div className="flex w-[76px] shrink-0 items-center">
+                        {task.members.length > 0 ? (
+                          task.members.map((member) => (
+                            <Avatar
+                              key={member.id}
+                              name={member.name}
+                              src={member.avatar}
+                              size="sm"
+                            />
+                          ))
+                        ) : (
+                          <AvatarAdd size="sm" />
+                        )}
+                      </div>
+                    ) : null}
+
+                    {fields.dueDate ? (
+                      <div className="w-[104px] shrink-0 text-[12.5px] text-[var(--text)]">
+                        {formatDateLong(task.dueDate)}
+                      </div>
+                    ) : null}
+
+                    <div className="flex w-[52px] shrink-0 justify-end">
+                      <button
+                        type="button"
+                        aria-label={`Actions for ${task.title}`}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
+                      >
+                        <MoreHorizontalIcon size={15} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mobile stacked card */}
+                  <div className="flex items-start gap-3 px-3 py-3 md:hidden">
+                    <div className="min-w-0 flex-1">
+                      {title}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                        {fields.priority ? <PriorityChip priority={task.priority} /> : null}
+                        {fields.dueDate ? (
+                          <span className="text-[11.5px] text-[var(--text-muted)]">
+                            {formatDateLong(task.dueDate)}
+                          </span>
+                        ) : null}
+                        {fields.members ? (
+                          <span className="flex items-center">
+                            {task.members.length > 0 ? (
+                              task.members.map((member) => (
+                                <Avatar
+                                  key={member.id}
+                                  name={member.name}
+                                  src={member.avatar}
+                                  size="xs"
+                                />
+                              ))
+                            ) : (
+                              <AvatarAdd size="xs" />
+                            )}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Actions for ${task.title}`}
+                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)]"
+                    >
+                      <MoreHorizontalIcon size={15} />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <button
+            type="button"
+            className={cn(
+              "flex w-full items-center gap-1.5 px-4 py-2.5 text-[12.5px] text-[var(--text-muted)]",
+              "transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]",
+              tasks.length > 0 && "border-t border-[var(--border)]",
+            )}
+          >
+            <PlusIcon size={13} />
+            {addLabel}
+          </button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
