@@ -17,9 +17,11 @@ import {
   ShareIcon,
   SmileIcon,
 } from "@/components/ui/icons";
-import { comments, currentUser, detailTask, subtasks } from "@/lib/data";
+import { api, type ApiTask } from "@/lib/api";
+import { useAsync } from "@/lib/hooks";
+import { useAuth } from "@/components/providers/auth-provider";
 import { formatDateShort } from "@/lib/utils";
-import type { FieldKey } from "@/lib/types";
+import type { FieldKey, Task } from "@/lib/types";
 
 const SUBTASK_FIELDS: Record<FieldKey, boolean> = {
   priority: true,
@@ -31,9 +33,67 @@ const SUBTASK_FIELDS: Record<FieldKey, boolean> = {
   reporter: false,
 };
 
-export function TaskDetailView({ title }: { title: string }) {
+function toTask(task: ApiTask): Task {
+  return {
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    members: task.members.map((m) => ({ id: m.id, name: m.name, avatar: m.avatar })),
+    dueDate: task.dueDate ?? "",
+    labels: task.labels,
+  };
+}
+
+export function TaskDetailView({ taskId }: { taskId: string }) {
   const [comment, setComment] = useState("");
   const [reply, setReply] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { user } = useAuth();
+
+  const { data: task, loading, error } = useAsync(() => api.getTask(taskId), [taskId]);
+  const {
+    data: comments,
+    loading: commentsLoading,
+    reload: reloadComments,
+  } = useAsync(() => api.listComments(taskId), [taskId]);
+
+  // Fetched as flat rows so the subtask table gets the same shape as the list.
+  const { data: subtaskData } = useAsync(
+    () => api.listTasks({ parentId: taskId }).then((r) => r.items),
+    [taskId],
+  );
+
+  async function postComment() {
+    const body = comment.trim();
+    if (!body || submitting) return;
+    setSubmitting(true);
+    try {
+      await api.createComment(taskId, body);
+      setComment("");
+      reloadComments();
+    } catch {
+      // Surfaced by the reload; the composer keeps the text so it isn't lost.
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <p className="px-6 py-10 text-[13px] text-[var(--text-muted)]">Loading task…</p>
+    );
+  }
+
+  if (error || !task) {
+    return (
+      <p role="alert" className="px-6 py-10 text-[13px] text-[var(--danger-fg)]">
+        {error ?? "Task not found."}
+      </p>
+    );
+  }
+
+  const subtasks = (subtaskData ?? []).map(toTask);
 
   return (
     <div className="px-4 pb-10 pt-4 sm:px-6">
@@ -41,11 +101,13 @@ export function TaskDetailView({ title }: { title: string }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-[19px] font-semibold tracking-[-0.015em] text-[var(--text)]">
-            {title}
+            {task.title}
           </h1>
-          <p className="mt-1.5 max-w-[560px] text-[12.5px] leading-relaxed text-[var(--text-muted)]">
-            {detailTask.description}
-          </p>
+          {task.description ? (
+            <p className="mt-1.5 max-w-[560px] text-[12.5px] leading-relaxed text-[var(--text-muted)]">
+              {task.description}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
@@ -98,21 +160,27 @@ export function TaskDetailView({ title }: { title: string }) {
                   <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--hover)] text-[9px] font-medium text-[var(--text-muted)]">
                     A
                   </span>
-                  {detailTask.role}
+                  {task.reporter?.name ?? "Unassigned"}
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-md bg-[var(--due-bg)] px-1.5 py-[3px] text-[11px] font-medium text-[var(--due-fg)]">
-                  <CalendarIcon size={11} />
-                  {formatDateShort(detailTask.dueDate)}
-                </span>
+                {task.dueDate ? (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-[var(--due-bg)] px-1.5 py-[3px] text-[11px] font-medium text-[var(--due-fg)]">
+                    <CalendarIcon size={11} />
+                    {formatDateShort(task.dueDate)}
+                  </span>
+                ) : null}
               </dd>
             </div>
 
             <div className="flex items-center gap-3">
               <dt className="w-[70px] shrink-0 text-[12px] text-[var(--text-muted)]">Labels</dt>
               <dd className="flex min-w-0 flex-wrap items-center gap-1.5">
-                {detailTask.labels.map((label) => (
-                  <LabelChip key={label} label={label} />
-                ))}
+                {task.labels.length > 0 ? (
+                  task.labels.map((label, index) => (
+                    <LabelChip key={`${label}-${index}`} label={label} />
+                  ))
+                ) : (
+                  <span className="text-[12px] text-[var(--text-subtle)]">No labels</span>
+                )}
               </dd>
             </div>
 
@@ -144,14 +212,23 @@ export function TaskDetailView({ title }: { title: string }) {
           <h2 className="mb-2 text-[13px] font-medium text-[var(--text)]">Subtasks</h2>
 
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-            {comments.map((entry) => (
+            {commentsLoading ? (
+              <p className="px-3 py-3 text-[12px] text-[var(--text-muted)]">Loading comments…</p>
+            ) : null}
+
+            {(comments ?? []).map((entry) => (
               <div key={entry.id} className="px-3 py-2.5">
                 <div className="flex items-center gap-2">
                   <Avatar name={entry.author.name} src={entry.author.avatar} size="sm" />
                   <span className="text-[12.5px] font-medium text-[var(--text)]">
                     {entry.author.name}
                   </span>
-                  <span className="text-[11px] text-[var(--text-subtle)]">{entry.createdAt}</span>
+                  <span className="text-[11px] text-[var(--text-subtle)]">
+                    {new Date(entry.createdAt).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </span>
                   <span className="flex-1" />
                   <button
                     type="button"
@@ -174,7 +251,7 @@ export function TaskDetailView({ title }: { title: string }) {
 
             {/* Reply composer */}
             <div className="flex items-center gap-2 border-t border-[var(--border)] px-3 py-2">
-              <Avatar name={currentUser.name} src={currentUser.avatar} size="sm" />
+              <Avatar name={user?.name ?? "Guest"} src={user?.avatar} size="sm" />
               <input
                 value={reply}
                 onChange={(e) => setReply(e.target.value)}
@@ -205,6 +282,12 @@ export function TaskDetailView({ title }: { title: string }) {
               <input
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void postComment();
+                  }
+                }}
                 placeholder="Add a comment..."
                 aria-label="Add a comment"
                 className="min-w-0 flex-1 bg-transparent py-2 text-[12.5px] text-[var(--text)] placeholder:text-[var(--text-subtle)] focus:outline-none"
@@ -219,7 +302,9 @@ export function TaskDetailView({ title }: { title: string }) {
               <button
                 type="button"
                 aria-label="Send comment"
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
+                onClick={() => void postComment()}
+                disabled={!comment.trim() || submitting}
+                className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)] disabled:opacity-40"
               >
                 <SendIcon size={14} />
               </button>
@@ -227,7 +312,11 @@ export function TaskDetailView({ title }: { title: string }) {
           </div>
         </div>
 
-        <TaskDetailsPanel />
+        <TaskDetailsPanel
+          taskId={task.id}
+          priority={task.priority}
+          status={task.status}
+        />
       </div>
     </div>
   );

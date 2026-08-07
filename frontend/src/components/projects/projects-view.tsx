@@ -6,7 +6,8 @@ import { PageToolbar } from "@/components/layout/page-toolbar";
 import { Avatar, AvatarAdd } from "@/components/ui/avatar";
 import { PriorityChip } from "@/components/ui/chips";
 import { MoreHorizontalIcon, PlusIcon } from "@/components/ui/icons";
-import { projects } from "@/lib/data";
+import { api } from "@/lib/api";
+import { useAsync, useDebounced } from "@/lib/hooks";
 import { formatDateLong } from "@/lib/utils";
 import type { FieldKey, Priority } from "@/lib/types";
 
@@ -26,17 +27,17 @@ export function ProjectsView() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [filterPriority, setFilterPriority] = useState<Priority | null>(null);
 
-  const query = search.trim().toLowerCase();
+  const debouncedSearch = useDebounced(search);
+  const { data, loading, error } = useAsync(() => api.listProjects(), []);
 
-  const visible = useMemo(
-    () =>
-      projects.filter((project) => {
-        const byQuery = !query || project.name.toLowerCase().includes(query);
-        const byPriority = !filterPriority || project.priority === filterPriority;
-        return byQuery && byPriority;
-      }),
-    [query, filterPriority],
-  );
+  const visible = useMemo(() => {
+    const query = debouncedSearch.trim().toLowerCase();
+    return (data?.items ?? []).filter((project) => {
+      const byQuery = !query || project.name.toLowerCase().includes(query);
+      const byPriority = !filterPriority || project.priority === filterPriority;
+      return byQuery && byPriority;
+    });
+  }, [data, debouncedSearch, filterPriority]);
 
   return (
     <>
@@ -53,6 +54,15 @@ export function ProjectsView() {
         onFilterPriorityChange={setFilterPriority}
       />
 
+      {error ? (
+        <p role="alert" className="px-5 py-10 text-center text-[13px] text-[var(--danger-fg)]">
+          {error}
+        </p>
+      ) : loading ? (
+        <p className="px-5 py-10 text-center text-[13px] text-[var(--text-muted)]">
+          Loading projects…
+        </p>
+      ) : (
       <div className="px-4 pb-8 sm:px-5">
         <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
           <div className="hidden items-center gap-3 border-b border-[var(--border)] bg-[var(--table-head-bg)] px-4 py-2.5 text-[12px] font-medium text-[var(--text-muted)] md:flex">
@@ -88,7 +98,7 @@ export function ProjectsView() {
 
                   {fields.members ? (
                     <div className="flex w-[76px] shrink-0 items-center">
-                      {project.lead.name ? (
+                      {project.lead ? (
                         <Avatar name={project.lead.name} src={project.lead.avatar} size="sm" />
                       ) : (
                         <AvatarAdd size="sm" />
@@ -98,7 +108,7 @@ export function ProjectsView() {
 
                   {fields.dueDate ? (
                     <div className="w-[104px] shrink-0 text-[12.5px] text-[var(--text)]">
-                      {formatDateLong(project.dueDate)}
+                      {project.dueDate ? formatDateLong(project.dueDate) : "—"}
                     </div>
                   ) : null}
 
@@ -124,13 +134,13 @@ export function ProjectsView() {
                     </Link>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                       {fields.priority ? <PriorityChip priority={project.priority} /> : null}
-                      {fields.dueDate ? (
+                      {fields.dueDate && project.dueDate ? (
                         <span className="text-[11.5px] text-[var(--text-muted)]">
                           {formatDateLong(project.dueDate)}
                         </span>
                       ) : null}
                       {fields.members ? (
-                        project.lead.name ? (
+                        project.lead ? (
                           <Avatar name={project.lead.name} src={project.lead.avatar} size="xs" />
                         ) : (
                           <AvatarAdd size="xs" />
@@ -159,6 +169,7 @@ export function ProjectsView() {
           </button>
         </div>
       </div>
+      )}
     </>
   );
 }

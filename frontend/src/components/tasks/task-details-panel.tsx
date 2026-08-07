@@ -14,9 +14,27 @@ import {
   SettingsIcon,
   UsersIcon,
 } from "@/components/ui/icons";
-import { activity, currentUser, detailTask } from "@/lib/data";
+import { useAuth } from "@/components/providers/auth-provider";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Priority } from "@/lib/types";
+
+/** Activity entries shown under "Updates" in the design. */
+const activity = [
+  {
+    id: "a-1",
+    actor: "You",
+    text: "changed priority from No priority to Ur...",
+    kind: "priority" as const,
+  },
+  {
+    id: "a-2",
+    actor: "You",
+    text: "posted an update",
+    meta: "Aug 2026",
+    kind: "update" as const,
+  },
+];
 
 const PRIORITY_OPTIONS: { id: Priority; label: string; color: string }[] = [
   { id: "none", label: "No Priority", color: "var(--priority-none)" },
@@ -38,15 +56,36 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function TaskDetailsPanel() {
-  const [priority, setPriority] = useState<Priority>(detailTask.priority);
+export function TaskDetailsPanel({
+  taskId,
+  priority: initialPriority,
+  status,
+}: {
+  taskId: string;
+  priority: Priority;
+  status: string;
+}) {
+  const [priority, setPriority] = useState<Priority>(initialPriority);
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
   const [startDate, setStartDate] = useState(new Date(2026, 0, 10));
   const [open, setOpen] = useState(true);
+  const { user } = useAuth();
 
   const priorityRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef<HTMLDivElement>(null);
+
+  /** Persists the new priority; reverts on failure so the UI can't drift. */
+  async function changePriority(next: Priority) {
+    const previous = priority;
+    setPriority(next);
+    setPriorityOpen(false);
+    try {
+      await api.updateTask(taskId, { priority: next });
+    } catch {
+      setPriority(previous);
+    }
+  }
 
   // Close whichever popover is open when clicking outside of it.
   useEffect(() => {
@@ -96,7 +135,7 @@ export function TaskDetailsPanel() {
         {open ? (
           <div className="mt-1.5">
             <Row label="Status">
-              <StatusChip status={detailTask.status} />
+              <StatusChip status={status} />
             </Row>
 
             <Row label="Priority">
@@ -128,10 +167,7 @@ export function TaskDetailsPanel() {
                         type="button"
                         role="menuitemradio"
                         aria-checked={priority === option.id}
-                        onClick={() => {
-                          setPriority(option.id);
-                          setPriorityOpen(false);
-                        }}
+                        onClick={() => void changePriority(option.id)}
                         className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors hover:bg-[var(--hover)]"
                         style={{ color: option.color }}
                       >
@@ -244,7 +280,7 @@ export function TaskDetailsPanel() {
                     <PriorityIcon level="high" size={14} />
                   </span>
                 ) : (
-                  <Avatar name={currentUser.name} src={currentUser.avatar} size="xs" />
+                  <Avatar name={user?.name ?? "Guest"} src={user?.avatar} size="xs" />
                 )}
               </span>
               <p className="min-w-0 flex-1 text-[11.5px] leading-snug text-[var(--text-muted)]">
