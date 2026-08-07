@@ -40,3 +40,9 @@ yarn-error.log*
 
 # local scratch
 shots/
+
+# backend
+dist-seed/
+*.db
+*.db-journal
+

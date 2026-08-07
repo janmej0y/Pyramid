@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "dist-seed",
+    "**/*spec.ts",
+    // Root-level files would widen the compilation root and emit to dist/src.
+    "prisma.config.ts",
+    "prisma/seed.ts"
+  ]
+}
