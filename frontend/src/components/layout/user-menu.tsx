@@ -13,7 +13,7 @@ import {
 import { ChevronsUpDownIcon, MoonIcon, SettingsIcon, SunIcon } from "@/components/ui/icons";
 import { useTheme } from "@/components/providers/theme-provider";
 import { ACCENTS, type Accent, type Theme } from "@/lib/theme";
-import { currentUser } from "@/lib/data";
+import { useAuth } from "@/components/providers/auth-provider";
 
 /**
  * Sidebar account switcher. Expands into the profile card with the
@@ -21,7 +21,12 @@ import { currentUser } from "@/lib/data";
  */
 export function UserMenu() {
   const { theme, accent, setTheme, setAccent } = useTheme();
+  const { user } = useAuth();
   const activeAccent = ACCENTS.find((a) => a.id === accent) ?? ACCENTS[1];
+  const currentUser = {
+    name: user?.name ?? "Guest",
+    avatar: user?.avatar ?? null,
+  };
 
   return (
     <Menu className="w-full">
@@ -41,7 +46,7 @@ export function UserMenu() {
             {currentUser.name}
           </span>
           <span className="text-[11px] text-[var(--text-muted)]">
-            {currentUser.name}@gmail.com
+            {currentUser.name.toLowerCase()}@gmail.com
           </span>
         </div>
 

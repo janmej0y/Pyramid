@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/icons";
 import { useTheme } from "@/components/providers/theme-provider";
 import { ACCENTS, type Accent, type Theme } from "@/lib/theme";
-import { currentUser } from "@/lib/data";
+import { useAuth } from "@/components/providers/auth-provider";
 import { cn } from "@/lib/utils";
 
 type Section = "profile" | "theme" | "color";
@@ -68,6 +68,11 @@ export function SettingsView() {
   const [section, setSection] = useState<Section>("profile");
   const [query, setQuery] = useState("");
   const { theme, accent, setTheme, setAccent } = useTheme();
+  const { user } = useAuth();
+  const currentUser = {
+    name: user?.name ?? "Guest",
+    avatar: user?.avatar ?? null,
+  };
 
   const visibleNav = NAV.filter((item) =>
     item.label.toLowerCase().includes(query.trim().toLowerCase()),
