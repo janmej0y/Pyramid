@@ -1,4 +1,10 @@
-import { IsEmail, IsOptional, IsString, Length, Matches } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+} from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -19,7 +25,8 @@ export class UpdateUserDto {
   @IsString({ message: 'username must be a string' })
   @Length(1, 30, { message: 'username must be between 1 and 30 characters' })
   @Matches(/^[a-zA-Z0-9_.-]+$/, {
-    message: 'username may only contain letters, numbers, dot, underscore, hyphen',
+    message:
+      'username may only contain letters, numbers, dot, underscore, hyphen',
   })
   username?: string;
 

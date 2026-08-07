@@ -34,7 +34,9 @@ export class QueryTasksDto extends PaginationDto {
    * parent. Pass includeSubtasks=true to get them as flat rows too.
    */
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => value === 'true' || value === true)
+  @Transform(
+    ({ value }: { value: unknown }) => value === 'true' || value === true,
+  )
   @IsBoolean({ message: 'includeSubtasks must be a boolean' })
   includeSubtasks?: boolean = false;
 }

@@ -45,7 +45,8 @@ export class TasksService {
         status: dto.status ?? 'To Do',
         priority: dto.priority ?? 'none',
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        position: dto.position ?? (await this.nextPosition(dto.status ?? 'To Do')),
+        position:
+          dto.position ?? (await this.nextPosition(dto.status ?? 'To Do')),
         projectId: dto.projectId,
         parentId: dto.parentId,
         reporterId,
