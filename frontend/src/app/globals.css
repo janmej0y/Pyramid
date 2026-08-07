@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens
+   Two independent axes, exactly as the design's user menu presents them:
+     - "Change Theme"  -> light | dark          (data-theme on <html>)
+     - "Color Mode"    -> amber | blue | pink | rose | emerald | black
+                                                (data-accent on <html>)
+   --------------------------------------------------------------------------- */
+
+:root,
+[data-theme="light"] {
+  --app-bg: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #f9f9f9;
+  --sidebar-bg: #fbfbfb;
+  --table-head-bg: #f7f7f7;
+  --hover: #f4f4f5;
+
+  --text: #18181b;
+  --text-muted: #71717a;
+  --text-subtle: #a1a1aa;
+
+  --border: #e8e8ea;
+  --border-strong: #d4d4d8;
+
+  --btn-primary-bg: #18181b;
+  --btn-primary-fg: #ffffff;
+
+  --ring: rgba(0, 0, 0, 0.08);
+  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* Semantic colors shared by both themes */
+  --priority-urgent: #ef4444;
+  --priority-high: #f43f5e;
+  --priority-medium: #f59e0b;
+  --priority-low: #a1a1aa;
+  --priority-none: #a1a1aa;
+
+  --status-backlog: #f59e0b;
+
+  --due-bg: #fee2e2;
+  --due-fg: #dc2626;
+
+  --danger-bg: #fee2e2;
+  --danger-fg: #dc2626;
+}
+
+[data-theme="dark"] {
+  --app-bg: #0a0a0a;
+  --surface: #131313;
+  --surface-muted: #171717;
+  --sidebar-bg: #0f0f0f;
+  --table-head-bg: #1a1a1a;
+  --hover: #1f1f1f;
+
+  --text: #fafafa;
+  --text-muted: #a1a1aa;
+  --text-subtle: #71717a;
+
+  --border: #262626;
+  --border-strong: #3f3f46;
+
+  --btn-primary-bg: #fafafa;
+  --btn-primary-fg: #18181b;
+
+  --ring: rgba(255, 255, 255, 0.08);
+  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+
+  --priority-urgent: #ef4444;
+  --priority-high: #fb7185;
+  --priority-medium: #fbbf24;
+  --priority-low: #71717a;
+  --priority-none: #71717a;
+
+  --status-backlog: #fbbf24;
+
+  --due-bg: #450a0a;
+  --due-fg: #fca5a5;
+
+  --danger-bg: #450a0a;
+  --danger-fg: #fca5a5;
+}
+
+/* Accent axis — drives the app frame border and interactive accents. */
+[data-accent="amber"]   { --accent: #d97706; --accent-fg: #ffffff; }
+[data-accent="blue"]    { --accent: #7c3aed; --accent-fg: #ffffff; }
+[data-accent="pink"]    { --accent: #db2777; --accent-fg: #ffffff; }
+[data-accent="rose"]    { --accent: #e11d48; --accent-fg: #ffffff; }
+[data-accent="emerald"] { --accent: #059669; --accent-fg: #ffffff; }
+[data-accent="black"]   { --accent: #18181b; --accent-fg: #ffffff; }
+
+[data-theme="dark"][data-accent="black"] { --accent: #fafafa; --accent-fg: #18181b; }
+
+@theme inline {
+  --color-app-bg: var(--app-bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-table-head: var(--table-head-bg);
+  --color-hover: var(--hover);
+
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+
+  --color-border-base: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+
+  --color-btn-primary: var(--btn-primary-bg);
+  --color-btn-primary-fg: var(--btn-primary-fg);
+
+  --color-priority-urgent: var(--priority-urgent);
+  --color-priority-high: var(--priority-high);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-low: var(--priority-low);
+  --color-priority-none: var(--priority-none);
+
+  --color-status-backlog: var(--status-backlog);
+  --color-due-bg: var(--due-bg);
+  --color-due-fg: var(--due-fg);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-fg: var(--danger-fg);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--text);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Thin, unobtrusive scrollbars to match the design's board/list surfaces. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
