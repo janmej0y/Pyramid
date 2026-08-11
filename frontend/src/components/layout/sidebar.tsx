@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserMenu } from "@/components/layout/user-menu";
@@ -13,6 +14,7 @@ const navItems = [
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const [workspaceOpen, setWorkspaceOpen] = useState(true);
 
   return (
     <div className="flex h-full w-full flex-col border-r border-[var(--border)] bg-[var(--sidebar-bg)]">
@@ -21,12 +23,23 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex flex-col gap-0.5 px-2">
-        <div className="flex items-center justify-between px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => setWorkspaceOpen((v) => !v)}
+          aria-expanded={workspaceOpen}
+          className="flex items-center justify-between rounded px-2 py-1.5 text-left transition-colors hover:bg-[var(--hover)]"
+        >
           <span className="text-[12px] font-medium text-[var(--text-muted)]">Workspace</span>
-          <CaretDownIcon size={12} className="text-[var(--text-subtle)]" />
-        </div>
+          <CaretDownIcon
+            size={12}
+            className={cn(
+              "text-[var(--text-subtle)] transition-transform",
+              !workspaceOpen && "-rotate-90",
+            )}
+          />
+        </button>
 
-        {navItems.map((item) => {
+        {workspaceOpen && navItems.map((item) => {
           const Icon = item.icon;
           // Nested routes (e.g. /tasks/b-1) keep the parent item highlighted.
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);

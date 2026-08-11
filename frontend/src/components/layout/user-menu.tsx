@@ -7,10 +7,17 @@ import {
   MenuContent,
   MenuItem,
   MenuLabel,
+  MenuSeparator,
   MenuSub,
   MenuTrigger,
 } from "@/components/ui/menu";
-import { ChevronsUpDownIcon, MoonIcon, SettingsIcon, SunIcon } from "@/components/ui/icons";
+import {
+  ChevronsUpDownIcon,
+  LogOutIcon,
+  MoonIcon,
+  SettingsIcon,
+  SunIcon,
+} from "@/components/ui/icons";
 import { useTheme } from "@/components/providers/theme-provider";
 import { ACCENTS, type Accent, type Theme } from "@/lib/theme";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -21,7 +28,7 @@ import { useAuth } from "@/components/providers/auth-provider";
  */
 export function UserMenu() {
   const { theme, accent, setTheme, setAccent } = useTheme();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const activeAccent = ACCENTS.find((a) => a.id === accent) ?? ACCENTS[1];
   const currentUser = {
     name: user?.name ?? "Guest",
@@ -110,6 +117,12 @@ export function UserMenu() {
             </span>
             Settings
           </Link>
+
+          <MenuSeparator />
+
+          <MenuItem icon={<LogOutIcon size={14} />} onSelect={logout}>
+            Log out
+          </MenuItem>
         </div>
       </MenuContent>
     </Menu>
