@@ -63,6 +63,8 @@ export type ToolbarProps = {
   onSearchOpenChange: (open: boolean) => void;
   filterPriority: Priority | null;
   onFilterPriorityChange: (priority: Priority | null) => void;
+  /** Focuses the first inline "Add" field on the page. */
+  onAdd?: () => void;
 };
 
 export function PageToolbar({
@@ -79,6 +81,7 @@ export function PageToolbar({
   onSearchOpenChange,
   filterPriority,
   onFilterPriorityChange,
+  onAdd,
 }: ToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -239,7 +242,7 @@ export function PageToolbar({
           </MenuContent>
         </Menu>
 
-        <Button variant="primary" size="md" className="gap-1">
+        <Button variant="primary" size="md" className="gap-1" onClick={onAdd}>
           <PlusIcon size={14} />
           <span className="hidden sm:inline">{addLabel}</span>
         </Button>

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
-import { StatusChip } from "@/components/ui/chips";
+import { LabelChip, StatusChip } from "@/components/ui/chips";
 import { DatePicker } from "@/components/tasks/date-picker";
 import {
   CalendarIcon,
   CaretDownIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   PlusIcon,
@@ -16,6 +18,8 @@ import {
 } from "@/components/ui/icons";
 import { useAuth } from "@/components/providers/auth-provider";
 import { api } from "@/lib/api";
+import { useAsync } from "@/lib/hooks";
+import { STATUS_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { Priority } from "@/lib/types";
 
@@ -60,20 +64,33 @@ export function TaskDetailsPanel({
   taskId,
   priority: initialPriority,
   status,
+  dueDate,
+  onChanged,
 }: {
   taskId: string;
   priority: Priority;
   status: string;
+  dueDate?: string | null;
+  onChanged?: () => void;
 }) {
   const [priority, setPriority] = useState<Priority>(initialPriority);
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
-  const [startDate, setStartDate] = useState(new Date(2026, 0, 10));
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [startDate, setStartDate] = useState(() =>
+    dueDate ? new Date(dueDate) : new Date(),
+  );
   const [open, setOpen] = useState(true);
   const { user } = useAuth();
 
+  const { data: allUsers } = useAsync(() => api.listUsers(), []);
+  const { data: task, reload: reloadTask } = useAsync(() => api.getTask(taskId), [taskId]);
+
   const priorityRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const membersRef = useRef<HTMLDivElement>(null);
 
   /** Persists the new priority; reverts on failure so the UI can't drift. */
   async function changePriority(next: Priority) {
@@ -82,9 +99,35 @@ export function TaskDetailsPanel({
     setPriorityOpen(false);
     try {
       await api.updateTask(taskId, { priority: next });
+      onChanged?.();
     } catch {
       setPriority(previous);
     }
+  }
+
+  async function changeStatus(next: string) {
+    setStatusOpen(false);
+    await api.updateTask(taskId, { status: next });
+    onChanged?.();
+  }
+
+  async function changeDueDate(next: Date) {
+    setStartDate(next);
+    setDateOpen(false);
+    await api.updateTask(taskId, { dueDate: next.toISOString() });
+    onChanged?.();
+  }
+
+  /** Members are replaced wholesale, so toggling sends the full new list. */
+  async function toggleMember(userId: string) {
+    const current = task?.members.map((m) => m.id) ?? [];
+    const next = current.includes(userId)
+      ? current.filter((id) => id !== userId)
+      : [...current, userId];
+
+    await api.updateTask(taskId, { assigneeIds: next });
+    reloadTask();
+    onChanged?.();
   }
 
   // Close whichever popover is open when clicking outside of it.
@@ -93,10 +136,12 @@ export function TaskDetailsPanel({
       const target = event.target as Node;
       if (priorityOpen && !priorityRef.current?.contains(target)) setPriorityOpen(false);
       if (dateOpen && !dateRef.current?.contains(target)) setDateOpen(false);
+      if (statusOpen && !statusRef.current?.contains(target)) setStatusOpen(false);
+      if (membersOpen && !membersRef.current?.contains(target)) setMembersOpen(false);
     }
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [priorityOpen, dateOpen]);
+  }, [priorityOpen, dateOpen, statusOpen, membersOpen]);
 
   const activePriority = PRIORITY_OPTIONS.find((p) => p.id === priority) ?? PRIORITY_OPTIONS[2];
 
@@ -118,24 +163,62 @@ export function TaskDetailsPanel({
           </button>
           <button
             type="button"
-            aria-label="Add detail"
+            aria-label="Add members"
+            onClick={() => {
+              setOpen(true);
+              setMembersOpen(true);
+            }}
             className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
           >
             <PlusIcon size={13} />
           </button>
-          <button
-            type="button"
-            aria-label="Detail settings"
+          <Link
+            href="/settings"
+            aria-label="Open settings"
             className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
           >
             <SettingsIcon size={13} />
-          </button>
+          </Link>
         </div>
 
         {open ? (
           <div className="mt-1.5">
             <Row label="Status">
-              <StatusChip status={status} />
+              <div className="relative" ref={statusRef}>
+                <button
+                  type="button"
+                  onClick={() => setStatusOpen((v) => !v)}
+                  aria-expanded={statusOpen}
+                  aria-haspopup="menu"
+                  className="rounded transition-opacity hover:opacity-80"
+                >
+                  <StatusChip status={status} />
+                </button>
+
+                {statusOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute left-0 top-full z-50 mt-1 w-[150px] animate-[menu-in_120ms_ease-out] rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-[var(--shadow-menu)]"
+                  >
+                    <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-subtle)]">
+                      Status
+                    </div>
+                    {STATUS_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={status === option}
+                        onClick={() => void changeStatus(option)}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-[var(--text)] transition-colors hover:bg-[var(--hover)]"
+                      >
+                        <span className="flex-1">{option}</span>
+                        {status === option ? <CheckIcon size={13} /> : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </Row>
 
             <Row label="Priority">
@@ -196,13 +279,61 @@ export function TaskDetailsPanel({
             </Row>
 
             <Row label="Members">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--text)] transition-colors hover:text-[var(--text-muted)]"
-              >
-                <UsersIcon size={13} />
-                Add members
-              </button>
+              <div className="relative" ref={membersRef}>
+                <button
+                  type="button"
+                  onClick={() => setMembersOpen((v) => !v)}
+                  aria-expanded={membersOpen}
+                  aria-haspopup="menu"
+                  className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--text)] transition-colors hover:text-[var(--text-muted)]"
+                >
+                  {task?.members.length ? (
+                    <span className="flex items-center gap-1">
+                      {task.members.map((member) => (
+                        <Avatar
+                          key={member.id}
+                          name={member.name}
+                          src={member.avatar}
+                          size="xs"
+                        />
+                      ))}
+                    </span>
+                  ) : (
+                    <>
+                      <UsersIcon size={13} />
+                      Add members
+                    </>
+                  )}
+                </button>
+
+                {membersOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute left-0 top-full z-50 mt-1 max-h-[220px] w-[190px] animate-[menu-in_120ms_ease-out] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-[var(--shadow-menu)]"
+                  >
+                    <div className="px-2 py-1.5 text-[11px] font-medium text-[var(--text-subtle)]">
+                      Members
+                    </div>
+                    {(allUsers ?? []).map((member) => {
+                      const active = task?.members.some((m) => m.id === member.id);
+                      return (
+                        <button
+                          key={member.id}
+                          type="button"
+                          role="menuitemcheckbox"
+                          aria-checked={active}
+                          onClick={() => void toggleMember(member.id)}
+                          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-[var(--text)] transition-colors hover:bg-[var(--hover)]"
+                        >
+                          <Avatar name={member.name} src={member.avatar} size="xs" />
+                          <span className="flex-1 truncate">{member.name}</span>
+                          {active ? <CheckIcon size={13} /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </Row>
 
             <Row label="Dates">
@@ -245,20 +376,42 @@ export function TaskDetailsPanel({
 
                 {dateOpen ? (
                   <div className="absolute left-0 top-full z-50 mt-1.5 animate-[menu-in_120ms_ease-out]">
-                    <DatePicker value={startDate} onChange={setStartDate} />
+                    <DatePicker
+                      value={startDate}
+                      onChange={(next) => void changeDueDate(next)}
+                    />
                   </div>
                 ) : null}
               </div>
             </Row>
 
             <Row label="Labels">
-              <span className="text-[12px] text-[var(--text-subtle)]">—</span>
+              {task?.labels.length ? (
+                <span className="flex flex-wrap gap-1">
+                  {task.labels.map((label, index) => (
+                    <LabelChip key={`${label}-${index}`} label={label} />
+                  ))}
+                </span>
+              ) : (
+                <span className="text-[12px] text-[var(--text-subtle)]">—</span>
+              )}
             </Row>
             <Row label="Teams">
               <span className="text-[12px] text-[var(--text-subtle)]">—</span>
             </Row>
             <Row label="Reporter">
-              <span className="text-[12px] text-[var(--text-subtle)]">—</span>
+              {task?.reporter ? (
+                <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+                  <Avatar
+                    name={task.reporter.name}
+                    src={task.reporter.avatar}
+                    size="xs"
+                  />
+                  {task.reporter.name}
+                </span>
+              ) : (
+                <span className="text-[12px] text-[var(--text-subtle)]">—</span>
+              )}
             </Row>
           </div>
         ) : null}

@@ -6,6 +6,7 @@ import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskTable } from "@/components/tasks/task-table";
 import { api, type ApiTask } from "@/lib/api";
 import { useAsync, useDebounced } from "@/lib/hooks";
+import { STATUS_OPTIONS } from "@/lib/constants";
 import type { FieldKey, Priority, Task, ViewMode } from "@/lib/types";
 
 /** Default column visibility — matches the checked state in the Fields menu. */
@@ -48,29 +49,76 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
   // Debounced so typing in the toolbar doesn't fire a request per keystroke.
   const debouncedSearch = useDebounced(search);
 
-  const { data, loading, error } = useAsync(
+  const { data, loading, error, reload } = useAsync(
     () => api.groupedTasks(projectId),
     [projectId],
   );
+
+  // Every mutation re-fetches the grouped payload, which keeps the list and
+  // board consistent without duplicating optimistic-update logic per view.
+  async function createTask(status: string, title: string) {
+    // Default to a week out so new cards aren't missing a due date, which the
+    // design always shows.
+    const due = new Date();
+    due.setDate(due.getDate() + 7);
+
+    await api.createTask({
+      title,
+      status,
+      projectId,
+      dueDate: due.toISOString(),
+    });
+    reload();
+  }
+
+  async function deleteTask(id: string) {
+    await api.deleteTask(id);
+    reload();
+  }
+
+  async function changeStatus(id: string, status: string) {
+    await api.updateTask(id, { status });
+    reload();
+  }
+
+  async function changePriority(id: string, priority: Priority) {
+    await api.updateTask(id, { priority });
+    reload();
+  }
+
+  /**
+   * The toolbar's "Add Task" opens the first column's inline field rather than
+   * a modal, since the design has no create dialog.
+   */
+  function focusFirstAdd() {
+    const target = document.querySelector<HTMLElement>("[data-add-target]");
+    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    target?.click();
+  }
 
   // Search and priority filters are applied client-side against the already
   // grouped payload, keeping the board and list in sync without a refetch.
   const groups = useMemo(() => {
     const query = debouncedSearch.trim().toLowerCase();
+    const byStatus = new Map(data?.map((g) => [g.status, g.items]) ?? []);
 
-    return (data ?? [])
-      .map((group) => ({
-        status: group.status,
-        items: group.items
-          .filter((task) => {
-            const byQuery = !query || task.title.toLowerCase().includes(query);
-            const byPriority = !filterPriority || task.priority === filterPriority;
-            return byQuery && byPriority;
-          })
-          .map(toTask),
-      }))
-      .filter((group) => group.items.length > 0);
+    // Always render every column, so an empty one still offers "Add Task".
+    // While filtering, empty groups are hidden — matching the search screen.
+    const filtering = Boolean(query || filterPriority);
+
+    return STATUS_OPTIONS.map((status) => ({
+      status,
+      items: (byStatus.get(status) ?? [])
+        .filter((task) => {
+          const byQuery = !query || task.title.toLowerCase().includes(query);
+          const byPriority = !filterPriority || task.priority === filterPriority;
+          return byQuery && byPriority;
+        })
+        .map(toTask),
+    })).filter((group) => !filtering || group.items.length > 0);
   }, [data, debouncedSearch, filterPriority]);
+
+  const isFiltering = Boolean(debouncedSearch.trim() || filterPriority);
 
   return (
     <>
@@ -88,6 +136,7 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
         onSearchOpenChange={setSearchOpen}
         filterPriority={filterPriority}
         onFilterPriorityChange={setFilterPriority}
+        onAdd={focusFirstAdd}
       />
 
       {error ? (
@@ -100,17 +149,22 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
         </p>
       ) : groups.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-[var(--text-muted)]">
-          No tasks found.
+          {isFiltering ? "No tasks match your filters." : "No tasks yet."}
         </p>
       ) : view === "list" ? (
         <div className="px-4 pb-8 sm:px-5">
-          {groups.map((group) => (
+          {groups.map((group, index) => (
             <TaskTable
               key={group.status}
               group={group.status}
               tasks={group.items}
               fields={fields}
               linkPrefix="/tasks"
+              addTarget={index === 0}
+              onAdd={(title) => createTask(group.status, title)}
+              onDelete={deleteTask}
+              onStatusChange={changeStatus}
+              onPriorityChange={changePriority}
             />
           ))}
         </div>
@@ -120,6 +174,10 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
             status: group.status,
             tasks: group.items,
           }))}
+          onAdd={createTask}
+          onDelete={deleteTask}
+          onStatusChange={changeStatus}
+          onPriorityChange={changePriority}
         />
       )}
     </>

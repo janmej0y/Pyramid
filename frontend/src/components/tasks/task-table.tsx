@@ -4,9 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { Avatar, AvatarAdd } from "@/components/ui/avatar";
 import { PriorityChip } from "@/components/ui/chips";
-import { CaretDownIcon, CaretRightIcon, MoreHorizontalIcon, PlusIcon } from "@/components/ui/icons";
+import { CaretDownIcon, CaretRightIcon } from "@/components/ui/icons";
+import { InlineAdd } from "@/components/tasks/inline-add";
+import { RowActions } from "@/components/tasks/row-actions";
 import { cn, formatDateLong } from "@/lib/utils";
-import type { FieldKey, Task } from "@/lib/types";
+import type { FieldKey, Priority, Task } from "@/lib/types";
 
 export type TaskTableProps = {
   group: string;
@@ -17,6 +19,14 @@ export type TaskTableProps = {
   addLabel?: string;
   /** Row links are omitted for subtask tables, which aren't navigable. */
   linkPrefix?: string;
+  onAdd?: (title: string) => Promise<void> | void;
+  onDelete?: (id: string) => Promise<void> | void;
+  onStatusChange?: (id: string, status: string) => Promise<void> | void;
+  onPriorityChange?: (id: string, priority: Priority) => Promise<void> | void;
+  /** Subtask tables have no status column to move between. */
+  showStatusActions?: boolean;
+  /** Marks this table's add field as the toolbar "Add" target. */
+  addTarget?: boolean;
 };
 
 /**
@@ -32,6 +42,12 @@ export function TaskTable({
   itemLabel = "Task",
   addLabel = "Add Task",
   linkPrefix,
+  onAdd,
+  onDelete,
+  onStatusChange,
+  onPriorityChange,
+  showStatusActions = true,
+  addTarget,
 }: TaskTableProps) {
   const [open, setOpen] = useState(true);
 
@@ -112,18 +128,32 @@ export function TaskTable({
 
                     {fields.dueDate ? (
                       <div className="w-[104px] shrink-0 text-[12.5px] text-[var(--text)]">
-                        {formatDateLong(task.dueDate)}
+                        {task.dueDate ? (
+                          formatDateLong(task.dueDate)
+                        ) : (
+                          <span className="text-[var(--text-subtle)]">—</span>
+                        )}
                       </div>
                     ) : null}
 
                     <div className="flex w-[52px] shrink-0 justify-end">
-                      <button
-                        type="button"
-                        aria-label={`Actions for ${task.title}`}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
-                      >
-                        <MoreHorizontalIcon size={15} />
-                      </button>
+                      <RowActions
+                        label={task.title}
+                        status={task.status}
+                        priority={task.priority}
+                        showStatus={showStatusActions}
+                        onStatusChange={
+                          onStatusChange
+                            ? (status) => void onStatusChange(task.id, status)
+                            : undefined
+                        }
+                        onPriorityChange={
+                          onPriorityChange
+                            ? (priority) => void onPriorityChange(task.id, priority)
+                            : undefined
+                        }
+                        onDelete={() => void onDelete?.(task.id)}
+                      />
                     </div>
                   </div>
 
@@ -133,7 +163,7 @@ export function TaskTable({
                       {title}
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                         {fields.priority ? <PriorityChip priority={task.priority} /> : null}
-                        {fields.dueDate ? (
+                        {fields.dueDate && task.dueDate ? (
                           <span className="text-[11.5px] text-[var(--text-muted)]">
                             {formatDateLong(task.dueDate)}
                           </span>
@@ -156,30 +186,37 @@ export function TaskTable({
                         ) : null}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      aria-label={`Actions for ${task.title}`}
-                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)]"
-                    >
-                      <MoreHorizontalIcon size={15} />
-                    </button>
+                    <RowActions
+                      label={task.title}
+                      status={task.status}
+                      priority={task.priority}
+                      showStatus={showStatusActions}
+                      onStatusChange={
+                        onStatusChange
+                          ? (status) => void onStatusChange(task.id, status)
+                          : undefined
+                      }
+                      onPriorityChange={
+                        onPriorityChange
+                          ? (priority) => void onPriorityChange(task.id, priority)
+                          : undefined
+                      }
+                      onDelete={() => void onDelete?.(task.id)}
+                    />
                   </div>
                 </li>
               );
             })}
           </ul>
 
-          <button
-            type="button"
-            className={cn(
-              "flex w-full items-center gap-1.5 px-4 py-2.5 text-[12.5px] text-[var(--text-muted)]",
-              "transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]",
-              tasks.length > 0 && "border-t border-[var(--border)]",
-            )}
-          >
-            <PlusIcon size={13} />
-            {addLabel}
-          </button>
+          {onAdd ? (
+            <InlineAdd
+              label={addLabel}
+              onSubmit={onAdd}
+              addTarget={addTarget}
+              className={cn(tasks.length > 0 && "border-t border-[var(--border)]")}
+            />
+          ) : null}
         </div>
       ) : null}
     </section>
