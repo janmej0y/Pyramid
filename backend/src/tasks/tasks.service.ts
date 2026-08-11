@@ -3,112 +3,118 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { Task, TaskDocument } from '../schemas/task.schema';
+import { Project } from '../schemas/project.schema';
+import { User } from '../schemas/user.schema';
+import { Comment } from '../schemas/comment.schema';
+import { Activity } from '../schemas/activity.schema';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { QueryTasksDto } from './dto/query-tasks.dto';
+import { idOf, toMember, toMembers } from '../common/serialize';
 
-/** Shape returned to clients — nested relations flattened into plain fields. */
-const taskInclude = {
-  assignees: {
-    include: {
-      user: {
-        select: { id: true, name: true, avatar: true },
-      },
-    },
-  },
-  labels: { include: { label: true } },
-  subtasks: {
-    orderBy: { position: 'asc' },
-    include: {
-      assignees: {
-        include: { user: { select: { id: true, name: true, avatar: true } } },
-      },
-      labels: { include: { label: true } },
-    },
-  },
-  project: { select: { id: true, name: true } },
-  reporter: { select: { id: true, name: true, avatar: true } },
-} as const;
+/** Refs hydrated on every task response. */
+const POPULATE = [
+  { path: 'assignees', select: 'name avatar' },
+  { path: 'reporter', select: 'name avatar' },
+  { path: 'project', select: 'name' },
+];
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @InjectModel(Task.name) private readonly taskModel: Model<Task>,
+    @InjectModel(Project.name) private readonly projectModel: Model<Project>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Comment.name) private readonly commentModel: Model<Comment>,
+    @InjectModel(Activity.name) private readonly activityModel: Model<Activity>,
+  ) {}
 
   async create(dto: CreateTaskDto, reporterId: string) {
     await this.assertRelationsExist(dto);
 
-    const task = await this.prisma.task.create({
-      data: {
-        title: dto.title.trim(),
-        description: dto.description?.trim(),
-        status: dto.status ?? 'To Do',
-        priority: dto.priority ?? 'none',
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        position:
-          dto.position ?? (await this.nextPosition(dto.status ?? 'To Do')),
-        projectId: dto.projectId,
-        parentId: dto.parentId,
-        reporterId,
-        assignees: dto.assigneeIds?.length
-          ? { create: dto.assigneeIds.map((userId) => ({ userId })) }
-          : undefined,
-        labels: dto.labels?.length
-          ? { create: await this.connectLabels(dto.labels) }
-          : undefined,
-      },
-      include: taskInclude,
+    const status = dto.status ?? 'To Do';
+
+    const task = await this.taskModel.create({
+      title: dto.title.trim(),
+      description: dto.description?.trim() ?? null,
+      status,
+      priority: dto.priority ?? 'none',
+      dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+      position: dto.position ?? (await this.nextPosition(status)),
+      project: dto.projectId ? new Types.ObjectId(dto.projectId) : null,
+      parent: dto.parentId ? new Types.ObjectId(dto.parentId) : null,
+      reporter: new Types.ObjectId(reporterId),
+      assignees: (dto.assigneeIds ?? []).map((id) => new Types.ObjectId(id)),
+      labels: this.normaliseLabels(dto.labels),
     });
 
-    return this.toResponse(task);
+    return this.findOne(task._id.toString());
   }
 
   async findAll(query: QueryTasksDto) {
-    const where = {
-      // SQLite's LIKE is case-insensitive for ASCII, so `contains` suffices.
-      ...(query.search ? { title: { contains: query.search } } : {}),
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.priority ? { priority: query.priority } : {}),
-      ...(query.projectId ? { projectId: query.projectId } : {}),
-      // An explicit parentId wins: it scopes the query to one task's subtasks.
-      ...(query.parentId
-        ? { parentId: query.parentId }
-        : query.includeSubtasks
-          ? {}
-          : { parentId: null }),
-    };
+    const filter: Record<string, unknown> = {};
+
+    // Anchored, escaped regex: MongoDB has no LIKE, and an unescaped user
+    // string would otherwise be interpreted as a pattern.
+    if (query.search) {
+      filter.title = { $regex: this.escapeRegex(query.search), $options: 'i' };
+    }
+    if (query.status) filter.status = query.status;
+    if (query.priority) filter.priority = query.priority;
+    if (query.projectId) filter.project = new Types.ObjectId(query.projectId);
+
+    // An explicit parentId scopes to one task's subtasks; otherwise top-level
+    // only, unless the caller opts into a flat list.
+    if (query.parentId) {
+      filter.parent = new Types.ObjectId(query.parentId);
+    } else if (!query.includeSubtasks) {
+      filter.parent = null;
+    }
+
+    const skip = query.skip ?? 0;
+    const take = query.take ?? 50;
 
     const [items, total] = await Promise.all([
-      this.prisma.task.findMany({
-        where,
-        include: taskInclude,
-        orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
-        skip: query.skip,
-        take: query.take,
-      }),
-      this.prisma.task.count({ where }),
+      this.taskModel
+        .find(filter)
+        .populate(POPULATE)
+        .sort({ position: 1, createdAt: 1 })
+        .skip(skip)
+        .limit(take)
+        .exec(),
+      this.taskModel.countDocuments(filter).exec(),
     ]);
 
     return {
-      items: items.map((task) => this.toResponse(task)),
+      items: await Promise.all(items.map((task) => this.toResponse(task))),
       total,
-      skip: query.skip ?? 0,
-      take: query.take ?? 50,
+      skip,
+      take,
     };
   }
 
   /** Tasks bucketed by status — the shape the board and grouped list consume. */
   async findGrouped(projectId?: string) {
-    const tasks = await this.prisma.task.findMany({
-      where: { parentId: null, ...(projectId ? { projectId } : {}) },
-      include: taskInclude,
-      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
-    });
+    const filter: Record<string, unknown> = { parent: null };
+    if (projectId) filter.project = new Types.ObjectId(projectId);
 
-    const groups = new Map<string, ReturnType<typeof this.toResponse>[]>();
+    const tasks = await this.taskModel
+      .find(filter)
+      .populate(POPULATE)
+      .sort({ position: 1, createdAt: 1 })
+      .exec();
+
+    const groups = new Map<
+      string,
+      Awaited<ReturnType<typeof this.toResponse>>[]
+    >();
     for (const task of tasks) {
+      const view = await this.toResponse(task);
       const bucket = groups.get(task.status) ?? [];
-      bucket.push(this.toResponse(task));
+      bucket.push(view);
       groups.set(task.status, bucket);
     }
 
@@ -116,181 +122,175 @@ export class TasksService {
   }
 
   async findOne(id: string) {
-    const task = await this.prisma.task.findUnique({
-      where: { id },
-      include: taskInclude,
-    });
-
-    if (!task) throw new NotFoundException(`Task ${id} not found`);
+    const task = await this.findDocument(id);
     return this.toResponse(task);
   }
 
   async update(id: string, dto: UpdateTaskDto) {
-    await this.assertExists(id);
+    await this.findDocument(id);
     await this.assertRelationsExist(dto);
 
     if (dto.parentId === id) {
       throw new BadRequestException('A task cannot be its own parent');
     }
 
-    const task = await this.prisma.task.update({
-      where: { id },
-      data: {
-        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
-        ...(dto.description !== undefined
-          ? { description: dto.description.trim() }
-          : {}),
-        ...(dto.status !== undefined ? { status: dto.status } : {}),
-        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
-        ...(dto.position !== undefined ? { position: dto.position } : {}),
-        ...(dto.projectId !== undefined ? { projectId: dto.projectId } : {}),
-        ...(dto.parentId !== undefined ? { parentId: dto.parentId } : {}),
-        ...(dto.dueDate !== undefined
-          ? { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }
-          : {}),
-        // Assignees and labels are replaced wholesale when supplied.
-        ...(dto.assigneeIds !== undefined
-          ? {
-              assignees: {
-                deleteMany: {},
-                create: dto.assigneeIds.map((userId) => ({ userId })),
-              },
-            }
-          : {}),
-        ...(dto.labels !== undefined
-          ? {
-              labels: {
-                deleteMany: {},
-                create: await this.connectLabels(dto.labels),
-              },
-            }
-          : {}),
-      },
-      include: taskInclude,
-    });
+    const patch: Record<string, unknown> = {};
+    if (dto.title !== undefined) patch.title = dto.title.trim();
+    if (dto.description !== undefined)
+      patch.description = dto.description.trim();
+    if (dto.status !== undefined) patch.status = dto.status;
+    if (dto.priority !== undefined) patch.priority = dto.priority;
+    if (dto.position !== undefined) patch.position = dto.position;
+    if (dto.dueDate !== undefined) {
+      patch.dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
+    }
+    if (dto.projectId !== undefined) {
+      patch.project = dto.projectId ? new Types.ObjectId(dto.projectId) : null;
+    }
+    if (dto.parentId !== undefined) {
+      patch.parent = dto.parentId ? new Types.ObjectId(dto.parentId) : null;
+    }
+    // Assignees and labels are replaced wholesale when supplied.
+    if (dto.assigneeIds !== undefined) {
+      patch.assignees = dto.assigneeIds.map((uid) => new Types.ObjectId(uid));
+    }
+    if (dto.labels !== undefined) {
+      patch.labels = this.normaliseLabels(dto.labels);
+    }
 
-    return this.toResponse(task);
+    await this.taskModel
+      .updateOne({ _id: new Types.ObjectId(id) }, { $set: patch })
+      .exec();
+    return this.findOne(id);
   }
 
   async remove(id: string) {
-    await this.assertExists(id);
-    // Subtasks, labels, assignees and comments cascade via the schema.
-    await this.prisma.task.delete({ where: { id } });
+    await this.findDocument(id);
+    const objectId = new Types.ObjectId(id);
+
+    // MongoDB has no cascading deletes, so dependents are removed explicitly.
+    const subtasks = await this.taskModel
+      .find({ parent: objectId })
+      .select('_id')
+      .exec();
+    const ids = [objectId, ...subtasks.map((sub) => sub._id)];
+
+    await Promise.all([
+      this.taskModel.deleteMany({ _id: { $in: ids } }).exec(),
+      this.commentModel.deleteMany({ task: { $in: ids } }).exec(),
+      this.activityModel.deleteMany({ task: { $in: ids } }).exec(),
+    ]);
+
     return { id, deleted: true };
   }
 
   // --- helpers -------------------------------------------------------------
 
-  private async assertExists(id: string) {
-    const found = await this.prisma.task.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!found) throw new NotFoundException(`Task ${id} not found`);
+  /** Loads a task, rejecting malformed ids before they reach the driver. */
+  private async findDocument(id: string): Promise<TaskDocument> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException(`Task ${id} not found`);
+    }
+    const task = await this.taskModel.findById(id).populate(POPULATE).exec();
+    if (!task) throw new NotFoundException(`Task ${id} not found`);
+    return task;
   }
 
   /**
    * Validates foreign keys up front so a bad id returns 404/400 rather than a
-   * raw Prisma constraint error.
+   * confusing driver-level failure.
    */
   private async assertRelationsExist(dto: CreateTaskDto | UpdateTaskDto) {
     if (dto.projectId) {
-      const project = await this.prisma.project.findUnique({
-        where: { id: dto.projectId },
-        select: { id: true },
-      });
-      if (!project) {
+      if (!Types.ObjectId.isValid(dto.projectId)) {
+        throw new NotFoundException(`Project ${dto.projectId} not found`);
+      }
+      const exists = await this.projectModel.exists({ _id: dto.projectId });
+      if (!exists) {
         throw new NotFoundException(`Project ${dto.projectId} not found`);
       }
     }
 
     if (dto.parentId) {
-      const parent = await this.prisma.task.findUnique({
-        where: { id: dto.parentId },
-        select: { id: true, parentId: true },
-      });
+      if (!Types.ObjectId.isValid(dto.parentId)) {
+        throw new NotFoundException(`Parent task ${dto.parentId} not found`);
+      }
+      const parent = await this.taskModel
+        .findById(dto.parentId)
+        .select('parent')
+        .exec();
       if (!parent) {
         throw new NotFoundException(`Parent task ${dto.parentId} not found`);
       }
       // One level of nesting only, matching the design's subtask table.
-      if (parent.parentId) {
+      if (parent.parent) {
         throw new BadRequestException('Subtasks cannot be nested further');
       }
     }
 
     if (dto.assigneeIds?.length) {
-      const found = await this.prisma.user.findMany({
-        where: { id: { in: dto.assigneeIds } },
-        select: { id: true },
-      });
-      if (found.length !== new Set(dto.assigneeIds).size) {
+      if (!dto.assigneeIds.every((id) => Types.ObjectId.isValid(id))) {
+        throw new BadRequestException('One or more assignee ids are unknown');
+      }
+      const found = await this.userModel
+        .countDocuments({ _id: { $in: dto.assigneeIds } })
+        .exec();
+      if (found !== new Set(dto.assigneeIds).size) {
         throw new BadRequestException('One or more assignee ids are unknown');
       }
     }
   }
 
-  /** Upserts label names and returns join rows for a nested create. */
-  private async connectLabels(names: string[]) {
-    const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
-    const labels = await Promise.all(
-      unique.map((name) =>
-        this.prisma.label.upsert({
-          where: { name },
-          create: { name },
-          update: {},
-          select: { id: true },
-        }),
-      ),
-    );
-    return labels.map((label) => ({ labelId: label.id }));
+  private normaliseLabels(labels?: string[]) {
+    return [...new Set((labels ?? []).map((l) => l.trim()).filter(Boolean))];
   }
 
   /** Appends new tasks to the end of their column. */
   private async nextPosition(status: string) {
-    const last = await this.prisma.task.findFirst({
-      where: { status },
-      orderBy: { position: 'desc' },
-      select: { position: true },
-    });
+    const last = await this.taskModel
+      .findOne({ status })
+      .sort({ position: -1 })
+      .select('position')
+      .exec();
     return (last?.position ?? -1) + 1;
   }
 
-  /** Flattens join tables so clients get plain arrays. */
-  private toResponse(task: {
-    id: string;
-    title: string;
-    description: string | null;
-    status: string;
-    priority: string;
-    dueDate: Date | null;
-    position: number;
-    projectId: string | null;
-    parentId: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    assignees?: { user: { id: string; name: string; avatar: string | null } }[];
-    labels?: { label: { id: string; name: string } }[];
-    subtasks?: unknown[];
-    project?: { id: string; name: string } | null;
-    reporter?: { id: string; name: string; avatar: string | null } | null;
-  }) {
+  /** Escapes regex metacharacters so search input is treated literally. */
+  private escapeRegex(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /** Flattens the document into the JSON shape the frontend consumes. */
+  private async toResponse(task: TaskDocument) {
+    const subtaskCount = await this.taskModel
+      .countDocuments({ parent: task._id })
+      .exec();
+
+    const project = task.project as unknown as {
+      _id: Types.ObjectId;
+      name: string;
+    } | null;
+
     return {
-      id: task.id,
+      id: task._id.toString(),
       title: task.title,
-      description: task.description,
+      description: task.description ?? null,
       status: task.status,
       priority: task.priority,
-      dueDate: task.dueDate,
+      dueDate: task.dueDate ?? null,
       position: task.position,
-      projectId: task.projectId,
-      parentId: task.parentId,
-      project: task.project ?? null,
-      reporter: task.reporter ?? null,
-      members: task.assignees?.map((a) => a.user) ?? [],
-      labels: task.labels?.map((l) => l.label.name) ?? [],
-      subtaskCount: task.subtasks?.length ?? 0,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
+      projectId: idOf(task.project),
+      parentId: idOf(task.parent),
+      project:
+        project && typeof project === 'object' && 'name' in project
+          ? { id: project._id.toString(), name: project.name }
+          : null,
+      reporter: toMember(task.reporter),
+      members: toMembers(task.assignees),
+      labels: task.labels ?? [],
+      subtaskCount,
+      createdAt: (task as unknown as { createdAt: Date }).createdAt,
+      updatedAt: (task as unknown as { updatedAt: Date }).updatedAt,
     };
   }
 }

@@ -1,6 +1,8 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { User } from '../schemas/user.schema';
 import type { AuthUser, JwtPayload } from './jwt.types';
 
 /** Inline gradient avatar so guest sessions match the design's user chip. */
@@ -22,7 +24,7 @@ const GUEST_AVATAR =
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly jwt: JwtService,
   ) {}
 
@@ -34,47 +36,48 @@ export class AuthService {
     accessToken: string;
     user: AuthUser & { avatar: string | null };
   }> {
-    const user = await this.prisma.user.create({
-      data: {
-        name: name?.trim() || 'Guest',
-        isGuest: true,
-        avatar: GUEST_AVATAR,
-      },
+    const user = await this.userModel.create({
+      name: name?.trim() || 'Guest',
+      isGuest: true,
+      avatar: GUEST_AVATAR,
     });
 
+    const id = user._id.toString();
+
     return {
-      accessToken: await this.signToken(user.id, user.name, user.isGuest),
+      accessToken: await this.signToken(id, user.name, user.isGuest),
       user: {
-        id: user.id,
+        id,
         name: user.name,
         isGuest: user.isGuest,
-        avatar: user.avatar,
+        avatar: user.avatar ?? null,
       },
     };
   }
 
   /** Resolves the current user from a token subject, for GET /auth/me. */
   async getProfile(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        title: true,
-        username: true,
-        avatar: true,
-        isGuest: true,
-        createdAt: true,
-      },
-    });
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new UnauthorizedException('Session no longer valid');
+    }
+
+    const user = await this.userModel.findById(userId).exec();
 
     if (!user) {
       // The token is well-formed but its subject is gone (e.g. a pruned guest).
       throw new UnauthorizedException('Session no longer valid');
     }
 
-    return user;
+    return {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email ?? null,
+      title: user.title ?? null,
+      username: user.username ?? null,
+      avatar: user.avatar ?? null,
+      isGuest: user.isGuest,
+      createdAt: (user as unknown as { createdAt: Date }).createdAt,
+    };
   }
 
   private signToken(

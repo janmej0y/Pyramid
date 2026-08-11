@@ -1,16 +1,27 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Connection, ConnectionStates } from 'mongoose';
 import { Public } from '../auth/public.decorator';
-import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@InjectConnection() private readonly connection: Connection) {}
 
   /** Liveness probe that also confirms the database is reachable. */
   @Public()
   @Get()
   async check() {
-    await this.prisma.$queryRaw`SELECT 1`;
+    // Pinging confirms the server actually answers, not merely that a socket
+    // exists.
+    if (
+      this.connection.readyState !== ConnectionStates.connected ||
+      !this.connection.db
+    ) {
+      throw new ServiceUnavailableException('Database not connected');
+    }
+
+    await this.connection.db.admin().ping();
+
     return { status: 'ok', timestamp: new Date().toISOString() };
   }
 }

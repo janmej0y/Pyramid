@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
   MinLength,
@@ -17,6 +18,10 @@ import {
 class EnvironmentVariables {
   @IsString()
   @IsNotEmpty({ message: 'DATABASE_URL is required' })
+  @Matches(/^mongodb(\+srv)?:\/\//, {
+    message:
+      'DATABASE_URL must be a MongoDB connection string (mongodb:// or mongodb+srv://)',
+  })
   DATABASE_URL!: string;
 
   @IsString()

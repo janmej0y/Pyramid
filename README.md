@@ -7,7 +7,7 @@ authentication, and a two-axis theme system.
 | | |
 | --- | --- |
 | **Frontend** | Next.js 16.3 (App Router) · React 19 · TypeScript · Tailwind CSS v4 |
-| **Backend** | NestJS 11 · TypeScript · Prisma 7 · SQLite |
+| **Backend** | NestJS 11 · TypeScript · Mongoose 9 · MongoDB |
 | **Auth** | JWT guest sessions, globally guarded routes |
 
 ---
@@ -30,8 +30,23 @@ authentication, and a two-axis theme system.
 
 ## Quick start
 
-**Prerequisites:** Node.js 20+ and npm. No database server needed — SQLite is a
-local file.
+**Prerequisites:** Node.js 20+, npm, and a MongoDB database.
+
+### 0. Get a MongoDB connection string
+
+**MongoDB Atlas** (free, recommended — and required for any cloud deployment):
+
+1. Create a free M0 cluster at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
+2. **Database Access** → add a database user with a password
+3. **Network Access** → allow your IP (or `0.0.0.0/0` for development)
+4. **Connect → Drivers** → copy the string, then insert the database name
+   before the `?`:
+
+```
+mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/pyramid?retryWrites=true&w=majority
+```
+
+Or use a **local MongoDB**: `mongodb://localhost:27017/pyramid`.
 
 The app runs as two processes. **Start the backend first**; the frontend calls it
 on load.
@@ -41,11 +56,12 @@ on load.
 ```bash
 cd backend
 npm install
-cp .env.example .env        # defaults work as-is for local dev
-npx prisma migrate dev      # creates dev.db and applies the schema
+cp .env.example .env        # paste your connection string into DATABASE_URL
 npm run db:seed             # loads the design's content
 npm run start:dev           # watch mode
 ```
+
+No migration step — Mongoose creates collections and indexes on first use.
 
 ### 2. Frontend → http://localhost:3000
 
@@ -71,7 +87,7 @@ Open **http://localhost:3000** and click **Continue as Guest**.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | `file:./dev.db` | SQLite file location |
+| `DATABASE_URL` | — | MongoDB URI; **must start `mongodb://` or `mongodb+srv://`** |
 | `JWT_SECRET` | — | Signing key; **must be 16+ characters** |
 | `JWT_EXPIRES_IN` | `7d` | Session lifetime |
 | `PORT` | `4000` | API port |
@@ -96,12 +112,11 @@ immediately with a clear message rather than at the first login attempt.
 | --- | --- |
 | `npm run start:dev` | Watch-mode server |
 | `npm run start:prod` | Runs built output (`npm run build` first) |
-| `npm run build` | `prisma generate` + `nest build` |
+| `npm run build` | `nest build` |
 | `npm run lint` | ESLint with `--fix` |
-| `npm run db:seed` | Reload seed data (wipes and re-inserts) |
-| `npm run db:reset` | Drop, re-migrate, re-seed |
-| `npm run prisma:migrate` | Create/apply a migration |
+| `npm run db:seed` | Reload seed data (wipes collections and re-inserts) |
 | `node test/api-smoke.mjs` | 49 API assertions (needs a running server) |
+| `node test/start-memory-db.mjs` | In-memory MongoDB for local testing, no install |
 
 ### Frontend
 
@@ -231,21 +246,22 @@ comment.
 ```
 Pyramid/
 ├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma      data model
-│   │   ├── migrations/        version-controlled SQL
-│   │   └── seed.ts            design content, idempotent
 │   ├── src/
+│   │   ├── schemas/           Mongoose schemas (User, Project, Task,
+│   │   │                      Comment, Activity)
 │   │   ├── auth/              guest login, JWT guard, @Public/@CurrentUser
 │   │   ├── tasks/             controller · service · DTOs
 │   │   ├── projects/          controller · service · DTOs
 │   │   ├── comments/          threaded comments, ownership checks
 │   │   ├── users/             member list, profile updates
-│   │   ├── common/            constants, pagination DTO, exception filter
+│   │   ├── common/            constants, pagination DTO, exception filter,
+│   │   │                      _id → id serializer
 │   │   ├── config/            env validation
-│   │   ├── health/            liveness probe
-│   │   └── prisma/            PrismaService + generated client
-│   └── test/api-smoke.mjs     end-to-end API assertions
+│   │   ├── health/            liveness + database ping
+│   │   └── seed.ts            design content, idempotent
+│   └── test/
+│       ├── api-smoke.mjs      end-to-end API assertions
+│       └── start-memory-db.mjs  in-memory MongoDB for local runs
 │
 └── frontend/src/
     ├── app/                   routes (App Router)
@@ -263,11 +279,25 @@ Pyramid/
 
 ### Data model
 
-`User`, `Project`, `Task`, `Label`, `Comment`, `Activity`, plus explicit join
-tables (`TaskAssignee`, `TaskLabel`) so assignment order stays stable.
+Five collections: `users`, `projects`, `tasks`, `comments`, `activities`.
 
-Tasks use a **self-relation** for subtasks — one level deep, enforced in the
-service layer rather than the schema.
+Modelled for MongoDB rather than translated from a relational schema:
+
+- **Assignees and labels are embedded on the task** — arrays of `ObjectId` refs
+  and plain strings — instead of the join tables a SQL design would need. Both
+  are always read with their task, so embedding avoids extra round trips.
+- **Tasks self-reference** for subtasks via a `parent` ref, one level deep,
+  enforced in the service layer.
+- **Deletes cascade in application code.** MongoDB has no foreign-key cascade,
+  so removing a task or project explicitly clears its subtasks, comments and
+  activity.
+- **Email uses a partial unique index**, not `sparse`. Guests have no email, and
+  `sparse` only skips *missing* fields — an explicit `null` still gets indexed,
+  so the second guest would collide with the first.
+
+Responses always expose `id`, never `_id`: a small serializer
+(`common/serialize.ts`) does that translation in one place, so no Mongo-specific
+field names reach the client.
 
 ### Reusable components
 
@@ -328,6 +358,9 @@ npm run start:dev          # terminal 1
 node test/api-smoke.mjs    # terminal 2
 ```
 
+No MongoDB installed? `node test/start-memory-db.mjs` boots a real MongoDB
+in-process and prints a connection string to use as `DATABASE_URL`.
+
 Covers auth enforcement (401 anonymous, 401 malformed token), every validation
 rejection, filtering, subtask nesting limits, cascade deletes, comment ownership
 (403), and full CRUD on tasks and projects.
@@ -343,14 +376,15 @@ change persisted, with no console errors.
 
 ## Design decisions
 
-- **SQLite over Postgres.** The assessment allows any database, and SQLite keeps
-  the project runnable with zero external services. The schema is
-  provider-agnostic — switching means changing the `datasource` provider and the
-  adapter in `prisma.service.ts`, nothing else.
-- **Guest users are real database rows**, not anonymous sessions, so tasks and
-  comments have genuine foreign keys and ownership checks work uniformly.
-- **Subtasks are a self-relation** rather than a separate model — they carry
-  identical fields, and one level of nesting is enforced in the service.
+- **MongoDB with Mongoose.** `@nestjs/mongoose` is the idiomatic pairing for a
+  Nest backend, and a document store deploys anywhere — unlike SQLite, whose
+  file is wiped on every restart on an ephemeral host.
+- **Guest users are real documents**, not anonymous sessions, so tasks and
+  comments hold genuine references and ownership checks work uniformly.
+- **Subtasks are a self-reference** rather than a separate collection — they
+  carry identical fields, and one level of nesting is enforced in the service.
+- **Search uses an escaped, case-insensitive regex.** MongoDB has no `LIKE`, and
+  an unescaped user string would otherwise be interpreted as a pattern.
 - **`useAsync` instead of a data-fetching library.** The app has a handful of read
   paths; a small hook with request cancellation avoids the dependency.
 - **Mutations re-fetch rather than patch local state**, which keeps the list and
@@ -358,17 +392,19 @@ change persisted, with no console errors.
 - **Icons are local SVGs**, so there's no icon-library dependency and stroke
   weights stay consistent.
 
-### Prisma 7 notes
+### Mongoose 9 notes
 
-Prisma 7 differs meaningfully from earlier versions, which explains some setup
-that looks unusual next to older tutorials:
+A couple of details differ from older Mongoose tutorials:
 
-- No bundled query engine — the client reaches the database through a **driver
-  adapter** (`@prisma/adapter-better-sqlite3`), constructed in `PrismaService`.
-- The generator requires an explicit `output` path; the client is imported from
-  there, not from `@prisma/client`.
-- `moduleFormat = "cjs"` is set because NestJS compiles to CommonJS; the default
-  ESM output fails to load.
+- **Nullable fields need an explicit `type`.** `@Prop({ default: null })` on a
+  `string | null` property throws `CannotDetermineTypeError` — TypeScript's
+  reflection metadata can't describe a union, so `@Prop({ type: String })` is
+  required.
+- **`FilterQuery` was renamed `QueryFilter`**, and `isValidObjectId()` now
+  rejects numbers.
+- Malformed ids are checked with `Types.ObjectId.isValid()` before any query, so
+  a bad path parameter returns a clean `404` instead of a driver-level cast
+  error.
 
 ---
 
@@ -428,19 +464,22 @@ source:
 
 ## Deployment notes
 
-Not yet deployed. When deploying:
+Not yet deployed, but MongoDB Atlas means no database migration is needed first —
+the same connection string works locally and in production.
 
-**SQLite will not survive** on platforms with ephemeral filesystems (Vercel,
-Render free tier, Railway) — the database file is wiped on every restart. Switch
-to Postgres first:
+When deploying:
 
-1. Change `datasource db { provider = "postgresql" }` in `schema.prisma`
-2. Swap the adapter in `prisma.service.ts` for `@prisma/adapter-pg`
-3. Point `DATABASE_URL` at the hosted database and run `prisma migrate deploy`
+1. **Atlas → Network Access** must allow your host's IP. Serverless platforms use
+   rotating IPs, so `0.0.0.0/0` is usually required; keep the database user's
+   password strong since it becomes the only barrier.
+2. Set `CORS_ORIGIN` to the deployed frontend URL, and `NEXT_PUBLIC_API_URL` to
+   the deployed API URL (including `/api`).
+3. **Use a strong random `JWT_SECRET`** — the committed default is for local
+   development only.
+4. Run the seed once against the production database if you want the design's
+   sample content.
 
-Then set `CORS_ORIGIN` to the deployed frontend URL and `NEXT_PUBLIC_API_URL` to
-the deployed API URL. **Use a strong random `JWT_SECRET` in production** — the
-committed default is for local development only.
+Suggested hosts: Vercel for the frontend, Render or Railway for the API.
 
 ---
 

@@ -1,132 +1,154 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { Project, ProjectDocument } from '../schemas/project.schema';
+import { Task } from '../schemas/task.schema';
+import { User } from '../schemas/user.schema';
+import { Comment } from '../schemas/comment.schema';
+import { Activity } from '../schemas/activity.schema';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { QueryProjectsDto } from './dto/query-projects.dto';
-
-const projectInclude = {
-  lead: { select: { id: true, name: true, avatar: true } },
-  _count: { select: { tasks: true } },
-} as const;
+import { toMember } from '../common/serialize';
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @InjectModel(Project.name) private readonly projectModel: Model<Project>,
+    @InjectModel(Task.name) private readonly taskModel: Model<Task>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Comment.name) private readonly commentModel: Model<Comment>,
+    @InjectModel(Activity.name) private readonly activityModel: Model<Activity>,
+  ) {}
 
   async create(dto: CreateProjectDto) {
     await this.assertLeadExists(dto.leadId);
 
-    const project = await this.prisma.project.create({
-      data: {
-        name: dto.name.trim(),
-        priority: dto.priority ?? 'none',
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        leadId: dto.leadId,
-      },
-      include: projectInclude,
+    const project = await this.projectModel.create({
+      name: dto.name.trim(),
+      priority: dto.priority ?? 'none',
+      dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+      lead: dto.leadId ? new Types.ObjectId(dto.leadId) : null,
     });
 
-    return this.toResponse(project);
+    return this.findOne(project._id.toString());
   }
 
   async findAll(query: QueryProjectsDto) {
-    const where = {
-      ...(query.search ? { name: { contains: query.search } } : {}),
-      ...(query.priority ? { priority: query.priority } : {}),
-    };
+    const filter: Record<string, unknown> = {};
+    if (query.search) {
+      filter.name = { $regex: this.escapeRegex(query.search), $options: 'i' };
+    }
+    if (query.priority) filter.priority = query.priority;
+
+    const skip = query.skip ?? 0;
+    const take = query.take ?? 50;
 
     const [items, total] = await Promise.all([
-      this.prisma.project.findMany({
-        where,
-        include: projectInclude,
-        orderBy: { createdAt: 'asc' },
-        skip: query.skip,
-        take: query.take,
-      }),
-      this.prisma.project.count({ where }),
+      this.projectModel
+        .find(filter)
+        .populate({ path: 'lead', select: 'name avatar' })
+        .sort({ createdAt: 1 })
+        .skip(skip)
+        .limit(take)
+        .exec(),
+      this.projectModel.countDocuments(filter).exec(),
     ]);
 
     return {
-      items: items.map((project) => this.toResponse(project)),
+      items: await Promise.all(items.map((p) => this.toResponse(p))),
       total,
-      skip: query.skip ?? 0,
-      take: query.take ?? 50,
+      skip,
+      take,
     };
   }
 
   async findOne(id: string) {
-    const project = await this.prisma.project.findUnique({
-      where: { id },
-      include: projectInclude,
-    });
-
-    if (!project) throw new NotFoundException(`Project ${id} not found`);
+    const project = await this.findDocument(id);
     return this.toResponse(project);
   }
 
   async update(id: string, dto: UpdateProjectDto) {
-    await this.assertExists(id);
+    await this.findDocument(id);
     await this.assertLeadExists(dto.leadId);
 
-    const project = await this.prisma.project.update({
-      where: { id },
-      data: {
-        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
-        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
-        ...(dto.leadId !== undefined ? { leadId: dto.leadId } : {}),
-        ...(dto.dueDate !== undefined
-          ? { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }
-          : {}),
-      },
-      include: projectInclude,
-    });
+    const patch: Record<string, unknown> = {};
+    if (dto.name !== undefined) patch.name = dto.name.trim();
+    if (dto.priority !== undefined) patch.priority = dto.priority;
+    if (dto.dueDate !== undefined) {
+      patch.dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
+    }
+    if (dto.leadId !== undefined) {
+      patch.lead = dto.leadId ? new Types.ObjectId(dto.leadId) : null;
+    }
 
-    return this.toResponse(project);
+    await this.projectModel
+      .updateOne({ _id: new Types.ObjectId(id) }, { $set: patch })
+      .exec();
+    return this.findOne(id);
   }
 
   async remove(id: string) {
-    await this.assertExists(id);
-    // Tasks cascade with the project.
-    await this.prisma.project.delete({ where: { id } });
+    await this.findDocument(id);
+    const objectId = new Types.ObjectId(id);
+
+    // No cascading deletes in MongoDB — a project's tasks (and their comments)
+    // are removed explicitly.
+    const tasks = await this.taskModel
+      .find({ project: objectId })
+      .select('_id')
+      .exec();
+    const taskIds = tasks.map((t) => t._id);
+
+    await Promise.all([
+      this.projectModel.deleteOne({ _id: objectId }).exec(),
+      this.taskModel.deleteMany({ project: objectId }).exec(),
+      this.commentModel.deleteMany({ task: { $in: taskIds } }).exec(),
+      this.activityModel.deleteMany({ task: { $in: taskIds } }).exec(),
+    ]);
+
     return { id, deleted: true };
   }
 
-  private async assertExists(id: string) {
-    const found = await this.prisma.project.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!found) throw new NotFoundException(`Project ${id} not found`);
+  private async findDocument(id: string): Promise<ProjectDocument> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException(`Project ${id} not found`);
+    }
+    const project = await this.projectModel
+      .findById(id)
+      .populate({ path: 'lead', select: 'name avatar' })
+      .exec();
+    if (!project) throw new NotFoundException(`Project ${id} not found`);
+    return project;
   }
 
   private async assertLeadExists(leadId?: string) {
     if (!leadId) return;
-    const lead = await this.prisma.user.findUnique({
-      where: { id: leadId },
-      select: { id: true },
-    });
-    if (!lead) throw new NotFoundException(`User ${leadId} not found`);
+    if (!Types.ObjectId.isValid(leadId)) {
+      throw new NotFoundException(`User ${leadId} not found`);
+    }
+    const exists = await this.userModel.exists({ _id: leadId });
+    if (!exists) throw new NotFoundException(`User ${leadId} not found`);
   }
 
-  private toResponse(project: {
-    id: string;
-    name: string;
-    priority: string;
-    dueDate: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-    lead?: { id: string; name: string; avatar: string | null } | null;
-    _count?: { tasks: number };
-  }) {
+  private escapeRegex(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private async toResponse(project: ProjectDocument) {
+    const taskCount = await this.taskModel
+      .countDocuments({ project: project._id })
+      .exec();
+
     return {
-      id: project.id,
+      id: project._id.toString(),
       name: project.name,
       priority: project.priority,
-      dueDate: project.dueDate,
-      lead: project.lead ?? null,
-      taskCount: project._count?.tasks ?? 0,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
+      dueDate: project.dueDate ?? null,
+      lead: toMember(project.lead),
+      taskCount,
+      createdAt: (project as unknown as { createdAt: Date }).createdAt,
+      updatedAt: (project as unknown as { updatedAt: Date }).updatedAt,
     };
   }
 }

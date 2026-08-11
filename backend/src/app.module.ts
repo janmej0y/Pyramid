@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { PrismaModule } from './prisma/prisma.module';
+import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { UsersModule } from './users/users.module';
@@ -17,7 +17,15 @@ import { validateEnv } from './config/env.validation';
       isGlobal: true,
       validate: validateEnv,
     }),
-    PrismaModule,
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        uri: config.getOrThrow<string>('DATABASE_URL'),
+        // Fail fast on an unreachable cluster rather than hanging the request
+        // that happens to arrive first.
+        serverSelectionTimeoutMS: 10000,
+      }),
+    }),
     AuthModule,
     UsersModule,
     TasksModule,

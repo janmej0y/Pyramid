@@ -37,7 +37,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Lets Prisma disconnect cleanly on SIGTERM/SIGINT.
+  // Lets Mongoose close its connection pool cleanly on SIGTERM/SIGINT.
   app.enableShutdownHooks();
 
   const port = config.get<number>('PORT', 4000);

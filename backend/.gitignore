@@ -3,3 +3,7 @@ node_modules
 .env
 
 /src/prisma/generated
+
+# in-memory test database handle
+test/.memory-db-uri
+

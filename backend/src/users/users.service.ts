@@ -3,61 +3,70 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { User, UserDocument } from '../schemas/user.schema';
 import { UpdateUserDto } from './dto/update-user.dto';
-
-const userSelect = {
-  id: true,
-  name: true,
-  email: true,
-  title: true,
-  username: true,
-  avatar: true,
-  isGuest: true,
-  createdAt: true,
-} as const;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+  ) {}
 
-  findAll() {
-    return this.prisma.user.findMany({
-      select: userSelect,
-      orderBy: { createdAt: 'asc' },
-    });
+  async findAll() {
+    const users = await this.userModel.find().sort({ createdAt: 1 }).exec();
+    return users.map((user) => this.toResponse(user));
   }
 
   async findOne(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: userSelect,
-    });
+    const user = await this.findDocument(id);
+    return this.toResponse(user);
+  }
+
+  async update(id: string, dto: UpdateUserDto) {
+    await this.findDocument(id);
+
+    if (dto.email) {
+      const taken = await this.userModel
+        .exists({ email: dto.email, _id: { $ne: new Types.ObjectId(id) } })
+        .exec();
+      if (taken) throw new ConflictException('That email is already in use');
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (dto.name !== undefined) patch.name = dto.name.trim();
+    if (dto.email !== undefined) patch.email = dto.email;
+    if (dto.title !== undefined) patch.title = dto.title.trim();
+    if (dto.username !== undefined) patch.username = dto.username;
+    if (dto.avatar !== undefined) patch.avatar = dto.avatar;
+
+    await this.userModel
+      .updateOne({ _id: new Types.ObjectId(id) }, { $set: patch })
+      .exec();
+
+    return this.findOne(id);
+  }
+
+  private async findDocument(id: string): Promise<UserDocument> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+    const user = await this.userModel.findById(id).exec();
     if (!user) throw new NotFoundException(`User ${id} not found`);
     return user;
   }
 
-  async update(id: string, dto: UpdateUserDto) {
-    await this.findOne(id);
-
-    if (dto.email) {
-      const taken = await this.prisma.user.findFirst({
-        where: { email: dto.email, NOT: { id } },
-        select: { id: true },
-      });
-      if (taken) throw new ConflictException('That email is already in use');
-    }
-
-    return this.prisma.user.update({
-      where: { id },
-      data: {
-        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
-        ...(dto.email !== undefined ? { email: dto.email } : {}),
-        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
-        ...(dto.username !== undefined ? { username: dto.username } : {}),
-        ...(dto.avatar !== undefined ? { avatar: dto.avatar } : {}),
-      },
-      select: userSelect,
-    });
+  private toResponse(user: UserDocument) {
+    return {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email ?? null,
+      title: user.title ?? null,
+      username: user.username ?? null,
+      avatar: user.avatar ?? null,
+      isGuest: user.isGuest,
+      createdAt: (user as unknown as { createdAt: Date }).createdAt,
+    };
   }
 }
