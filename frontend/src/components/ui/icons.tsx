@@ -305,6 +305,24 @@ export const AtSignIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const LogOutIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" />
+    <path d="m15.5 16.5 4.5-4.5-4.5-4.5" />
+    <path d="M20 12H9" />
+  </Icon>
+);
+
+export const TrashIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 7h16" />
+    <path d="M10 11v6" />
+    <path d="M14 11v6" />
+    <path d="M5.5 7l1 12.2A1.8 1.8 0 0 0 8.3 21h7.4a1.8 1.8 0 0 0 1.8-1.8L18.5 7" />
+    <path d="M9 7V4.8A1.8 1.8 0 0 1 10.8 3h2.4A1.8 1.8 0 0 1 15 4.8V7" />
+  </Icon>
+);
+
 export const PencilIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z" />

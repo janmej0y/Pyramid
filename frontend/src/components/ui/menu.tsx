@@ -95,11 +95,12 @@ export function MenuTrigger({
   children,
   className,
   asChildProps,
+  ...rest
 }: {
   children: React.ReactNode;
   className?: string;
   asChildProps?: Record<string, unknown>;
-}) {
+} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "children">) {
   const { open, setOpen, menuId } = useMenuContext("MenuTrigger");
   return (
     <button
@@ -110,6 +111,7 @@ export function MenuTrigger({
       aria-controls={open ? menuId : undefined}
       onClick={() => setOpen(!open)}
       className={cn("outline-none", className)}
+      {...rest}
       {...asChildProps}
     >
       {children}
@@ -169,6 +171,7 @@ export function MenuItem({
   hasSubmenu,
   disabled,
   className,
+  closeOnSelect = true,
 }: {
   children: React.ReactNode;
   onSelect?: () => void;
@@ -178,13 +181,22 @@ export function MenuItem({
   hasSubmenu?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Set false for items that toggle state and should keep the menu open. */
+  closeOnSelect?: boolean;
 }) {
+  const { setOpen } = useMenuContext("MenuItem");
+
   return (
     <button
       type="button"
       role="menuitem"
       disabled={disabled}
-      onClick={onSelect}
+      onClick={() => {
+        onSelect?.();
+        // Submenu parents own their own open state; closing here would
+        // dismiss the flyout the moment it is opened.
+        if (closeOnSelect && !hasSubmenu) setOpen(false);
+      }}
       className={cn(
         "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-[var(--text)]",
         "transition-colors hover:bg-[var(--hover)] focus-visible:bg-[var(--hover)] focus-visible:outline-none",
