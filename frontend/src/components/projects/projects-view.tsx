@@ -5,7 +5,8 @@ import Link from "next/link";
 import { PageToolbar } from "@/components/layout/page-toolbar";
 import { Avatar, AvatarAdd } from "@/components/ui/avatar";
 import { PriorityChip } from "@/components/ui/chips";
-import { MoreHorizontalIcon, PlusIcon } from "@/components/ui/icons";
+import { InlineAdd } from "@/components/tasks/inline-add";
+import { RowActions } from "@/components/tasks/row-actions";
 import { api } from "@/lib/api";
 import { useAsync, useDebounced } from "@/lib/hooks";
 import { formatDateLong } from "@/lib/utils";
@@ -28,7 +29,30 @@ export function ProjectsView() {
   const [filterPriority, setFilterPriority] = useState<Priority | null>(null);
 
   const debouncedSearch = useDebounced(search);
-  const { data, loading, error } = useAsync(() => api.listProjects(), []);
+  const { data, loading, error, reload } = useAsync(() => api.listProjects(), []);
+
+  async function createProject(name: string) {
+    const due = new Date();
+    due.setDate(due.getDate() + 30);
+    await api.createProject({ name, dueDate: due.toISOString() });
+    reload();
+  }
+
+  async function deleteProject(id: string) {
+    await api.deleteProject(id);
+    reload();
+  }
+
+  async function changeProjectPriority(id: string, priority: Priority) {
+    await api.updateProject(id, { priority });
+    reload();
+  }
+
+  function focusFirstAdd() {
+    const target = document.querySelector<HTMLElement>("[data-add-target]");
+    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    target?.click();
+  }
 
   const visible = useMemo(() => {
     const query = debouncedSearch.trim().toLowerCase();
@@ -52,6 +76,7 @@ export function ProjectsView() {
         onSearchOpenChange={setSearchOpen}
         filterPriority={filterPriority}
         onFilterPriorityChange={setFilterPriority}
+        onAdd={focusFirstAdd}
       />
 
       {error ? (
@@ -113,13 +138,15 @@ export function ProjectsView() {
                   ) : null}
 
                   <div className="flex w-[52px] shrink-0 justify-end">
-                    <button
-                      type="button"
-                      aria-label={`Actions for ${project.name}`}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
-                    >
-                      <MoreHorizontalIcon size={15} />
-                    </button>
+                    <RowActions
+                      label={project.name}
+                      priority={project.priority}
+                      showStatus={false}
+                      onPriorityChange={(priority) =>
+                        void changeProjectPriority(project.id, priority)
+                      }
+                      onDelete={() => void deleteProject(project.id)}
+                    />
                   </div>
                 </div>
 
@@ -148,25 +175,27 @@ export function ProjectsView() {
                       ) : null}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    aria-label={`Actions for ${project.name}`}
-                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--text-subtle)] transition-colors hover:bg-[var(--hover)]"
-                  >
-                    <MoreHorizontalIcon size={15} />
-                  </button>
+                  <RowActions
+                    label={project.name}
+                    priority={project.priority}
+                    showStatus={false}
+                    onPriorityChange={(priority) =>
+                      void changeProjectPriority(project.id, priority)
+                    }
+                    onDelete={() => void deleteProject(project.id)}
+                  />
                 </div>
               </li>
             ))}
           </ul>
 
-          <button
-            type="button"
-            className="flex w-full items-center gap-1.5 border-t border-[var(--border)] px-4 py-2.5 text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
-          >
-            <PlusIcon size={13} />
-            Add Projects
-          </button>
+          <InlineAdd
+            label="Add Projects"
+            placeholder="Project name"
+            onSubmit={createProject}
+            addTarget
+            className={visible.length > 0 ? "border-t border-[var(--border)]" : undefined}
+          />
         </div>
       </div>
       )}
