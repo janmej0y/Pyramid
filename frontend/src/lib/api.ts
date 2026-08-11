@@ -78,6 +78,14 @@ async function request<T>(
 
 export type ApiMember = { id: string; name: string; avatar: string | null };
 
+/** The full profile returned by /auth/me and /users/me. */
+export type ApiProfile = ApiMember & {
+  email: string | null;
+  title: string | null;
+  username: string | null;
+  isGuest: boolean;
+};
+
 export type ApiTask = {
   id: string;
   title: string;
@@ -127,7 +135,7 @@ export const api = {
       auth: false,
     }),
 
-  me: () => request<ApiMember & { email: string | null }>("/auth/me"),
+  me: () => request<ApiProfile>("/auth/me"),
 
   listTasks: (
     params: {
@@ -186,5 +194,45 @@ export const api = {
       body: JSON.stringify({ body, parentId }),
     }),
 
+  updateComment: (id: string, body: string) =>
+    request<ApiComment>(`/comments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body }),
+    }),
+
+  deleteComment: (id: string) =>
+    request<{ id: string }>(`/comments/${id}`, { method: "DELETE" }),
+
+  createProject: (body: {
+    name: string;
+    priority?: Priority;
+    dueDate?: string;
+    leadId?: string;
+  }) =>
+    request<ApiProject>("/projects", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateProject: (id: string, body: Record<string, unknown>) =>
+    request<ApiProject>(`/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteProject: (id: string) =>
+    request<{ id: string }>(`/projects/${id}`, { method: "DELETE" }),
+
   listUsers: () => request<ApiMember[]>("/users"),
+
+  updateProfile: (body: {
+    name?: string;
+    email?: string;
+    title?: string;
+    username?: string;
+  }) =>
+    request<ApiProfile>("/users/me", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 };
