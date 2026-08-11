@@ -189,6 +189,19 @@ Documented per the assessment's requirement to note deviations.
 8. **Colours, spacing and type sizes were matched from exported screenshots**,
    not Figma dev-mode values (the file requires a login). They are close but not
    guaranteed pixel-exact.
+9. **Creation happens inline, not in a modal.** The design shows a "+ Add Task"
+   row and no create dialog, so clicking it turns the row into a text field
+   (Enter saves, Escape cancels). New items get a default due date so cards are
+   never missing one.
+10. **The "···" row menus have no specified contents in the design.** They expose
+    the operations the API supports: move between statuses, change priority, and
+    delete.
+11. **"Add document or link" is presentational.** Attachments aren't part of the
+    data model, so the row renders but is inert rather than pretending to save.
+12. **Reaction and file-attachment buttons were removed.** Neither is in the API
+    schema; leaving them would mean shipping controls that do nothing.
+13. **The reply box attaches to the most recent comment**, since the design shows
+    one shared reply field beneath the thread rather than per-comment replies.
 
 ---
 
