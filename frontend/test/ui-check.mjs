@@ -36,8 +36,15 @@ await page.goto(BASE, { waitUntil: "networkidle" });
 await page.getByRole("button", { name: "Continue as Guest" }).click();
 await page.waitForURL("**/tasks", { timeout: 20000 });
 await page.waitForLoadState("networkidle");
-await page.waitForTimeout(800);
 check("guest login navigates to /tasks", page.url().includes("/tasks"));
+
+// Wait for the condition rather than a fixed delay: the list renders only
+// after the API round trip, and a hardcoded timeout made this suite flaky.
+await page
+  .getByText("Write API Documentation")
+  .first()
+  .waitFor({ state: "visible", timeout: 20000 })
+  .catch(() => {});
 check(
   "seeded data renders from MongoDB",
   await visible(page.getByText("Write API Documentation")),
@@ -50,7 +57,11 @@ const field = page.getByRole("textbox", { name: "Add Task" }).first();
 check("Add Task opens an inline field", await visible(field));
 await field.fill("Mongo smoke task");
 await page.keyboard.press("Enter");
-await page.waitForTimeout(1400);
+await page
+  .getByText("Mongo smoke task")
+  .first()
+  .waitFor({ state: "visible", timeout: 20000 })
+  .catch(() => {});
 check("new task appears", await visible(page.getByText("Mongo smoke task")));
 await page.keyboard.press("Escape");
 
@@ -60,7 +71,12 @@ await row.getByRole("button", { name: /Actions for Mongo smoke task/ }).click();
 await page.waitForTimeout(350);
 check("row actions menu opens", await visible(page.getByRole("menu")));
 await page.getByRole("menuitem", { name: "Urgent" }).click();
-await page.waitForTimeout(1200);
+await page
+  .locator("li", { hasText: "Mongo smoke task" })
+  .getByText("Urgent")
+  .first()
+  .waitFor({ state: "visible", timeout: 20000 })
+  .catch(() => {});
 check(
   "priority change persists",
   await visible(
@@ -72,7 +88,14 @@ await page.locator("li", { hasText: "Mongo smoke task" }).first()
   .getByRole("button", { name: /Actions for/ }).click();
 await page.waitForTimeout(350);
 await page.getByRole("menuitem", { name: "Doing" }).click();
-await page.waitForTimeout(1400);
+// The row unmounts from "To Do" and remounts under "Doing" after the refetch.
+await page
+  .locator("section", { hasText: "Doing" })
+  .first()
+  .getByText("Mongo smoke task")
+  .first()
+  .waitFor({ state: "visible", timeout: 20000 })
+  .catch(() => {});
 check(
   "status move relocates the task",
   await visible(
@@ -111,14 +134,24 @@ await page.getByRole("button", { name: "Edit task title" }).click();
 await page.waitForTimeout(300);
 await page.getByRole("textbox", { name: "task title" }).fill("Renamed in Mongo");
 await page.keyboard.press("Enter");
-await page.waitForTimeout(1400);
+// Waits for the saved value to appear rather than a fixed delay — the save
+// round-trips to Atlas before the heading re-renders.
+await page
+  .getByText("Renamed in Mongo")
+  .first()
+  .waitFor({ state: "visible", timeout: 20000 })
+  .catch(() => {});
 check("title edit persists", await visible(page.getByText("Renamed in Mongo")));
 
 await page.getByRole("button", { name: "Edit description" }).click();
 await page.waitForTimeout(300);
 await page.getByRole("textbox", { name: "description" }).fill("Stored in MongoDB.");
 await page.keyboard.press("Control+Enter");
-await page.waitForTimeout(1400);
+await page
+  .getByText("Stored in MongoDB.")
+  .first()
+  .waitFor({ state: "visible", timeout: 20000 })
+  .catch(() => {});
 check("description edit persists", await visible(page.getByText("Stored in MongoDB.")));
 
 section("details panel");
@@ -148,13 +181,21 @@ const sub = page.getByRole("textbox", { name: "Add Subtasks" }).first();
 if (await visible(sub)) {
   await sub.fill("Mongo subtask");
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(1400);
+  await page
+    .getByText("Mongo subtask")
+    .first()
+    .waitFor({ state: "visible", timeout: 20000 })
+    .catch(() => {});
 }
 check("subtask created", await visible(page.getByText("Mongo subtask")));
 
 await page.getByRole("textbox", { name: "Add a comment" }).fill("Mongo comment");
 await page.keyboard.press("Enter");
-await page.waitForTimeout(1500);
+await page
+  .getByText("Mongo comment")
+  .first()
+  .waitFor({ state: "visible", timeout: 20000 })
+  .catch(() => {});
 check("comment posted", await visible(page.getByText("Mongo comment")));
 
 section("projects");
@@ -166,7 +207,11 @@ const proj = page.getByRole("textbox", { name: "Add Projects" }).first();
 if (await visible(proj)) {
   await proj.fill("Mongo project");
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(1400);
+  await page
+    .getByText("Mongo project")
+    .first()
+    .waitFor({ state: "visible", timeout: 20000 })
+    .catch(() => {});
 }
 check("project created", await visible(page.getByText("Mongo project")));
 
@@ -174,7 +219,11 @@ await page.locator("li", { hasText: "Mongo project" }).first()
   .getByRole("button", { name: /Actions for/ }).click();
 await page.waitForTimeout(350);
 await page.getByRole("menuitem", { name: "Delete" }).click();
-await page.waitForTimeout(1400);
+await page
+  .getByText("Mongo project")
+  .first()
+  .waitFor({ state: "detached", timeout: 20000 })
+  .catch(() => {});
 check("project deleted", !(await visible(page.getByText("Mongo project"))));
 
 section("settings + theme");
@@ -202,13 +251,19 @@ check(
 
 section("cleanup");
 await page.goto(BASE + "/tasks", { waitUntil: "networkidle" });
-await page.waitForTimeout(1000);
+await page.waitForTimeout(1500);
 const created = page.locator("li", { hasText: "Renamed in Mongo" }).first();
 if (await visible(created)) {
   await created.getByRole("button", { name: /Actions for/ }).click();
-  await page.waitForTimeout(350);
+  await page.waitForTimeout(400);
   await page.getByRole("menuitem", { name: "Delete" }).click();
-  await page.waitForTimeout(1400);
+  // Waits for the row to disappear rather than a fixed delay — a remote
+  // database makes the delete-then-refetch round trip too slow to guess at.
+  await page
+    .locator("li", { hasText: "Renamed in Mongo" })
+    .first()
+    .waitFor({ state: "detached", timeout: 15000 })
+    .catch(() => {});
 }
 check("task deleted", !(await visible(page.getByText("Renamed in Mongo"))));
 

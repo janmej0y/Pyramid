@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import Link from "next/link";
 import { Avatar, AvatarAdd } from "@/components/ui/avatar";
 import { PriorityChip } from "@/components/ui/chips";
 import { CaretDownIcon, CaretRightIcon } from "@/components/ui/icons";
-import { InlineAdd } from "@/components/tasks/inline-add";
+import { InlineAdd, type InlineAddHandle } from "@/components/tasks/inline-add";
 import { RowActions } from "@/components/tasks/row-actions";
+import {
+  DueDateCell,
+  MembersCell,
+  PriorityCell,
+} from "@/components/tasks/cell-editors";
 import { cn, formatDateLong } from "@/lib/utils";
 import type { FieldKey, Priority, Task } from "@/lib/types";
 
@@ -23,10 +28,10 @@ export type TaskTableProps = {
   onDelete?: (id: string) => Promise<void> | void;
   onStatusChange?: (id: string, status: string) => Promise<void> | void;
   onPriorityChange?: (id: string, priority: Priority) => Promise<void> | void;
+  onMembersChange?: (id: string, memberIds: string[]) => Promise<void> | void;
+  onDueDateChange?: (id: string, dueDate: string) => Promise<void> | void;
   /** Subtask tables have no status column to move between. */
   showStatusActions?: boolean;
-  /** Marks this table's add field as the toolbar "Add" target. */
-  addTarget?: boolean;
 };
 
 /**
@@ -35,20 +40,25 @@ export type TaskTableProps = {
  * Below `md` the table switches to a stacked card layout — a 5-column grid at
  * 375px would either overflow or crush the task title to a few characters.
  */
-export function TaskTable({
-  group,
-  tasks,
-  fields,
-  itemLabel = "Task",
-  addLabel = "Add Task",
-  linkPrefix,
-  onAdd,
-  onDelete,
-  onStatusChange,
-  onPriorityChange,
-  showStatusActions = true,
-  addTarget,
-}: TaskTableProps) {
+export const TaskTable = forwardRef<InlineAddHandle, TaskTableProps>(
+  function TaskTable(
+    {
+      group,
+      tasks,
+      fields,
+      itemLabel = "Task",
+      addLabel = "Add Task",
+      linkPrefix,
+      onAdd,
+      onDelete,
+      onStatusChange,
+      onPriorityChange,
+      onMembersChange,
+      onDueDateChange,
+      showStatusActions = true,
+    },
+    addRef,
+  ) {
   const [open, setOpen] = useState(true);
 
   return (
@@ -103,15 +113,29 @@ export function TaskTable({
                   <div className="hidden items-center gap-3 px-4 py-2.5 md:flex">
                     <div className="min-w-0 flex-1">{title}</div>
 
+                    {/* Each cell is directly editable — the ··· menu alone
+                        left no way to set members or a due date. */}
                     {fields.priority ? (
                       <div className="w-[88px] shrink-0">
-                        <PriorityChip priority={task.priority} />
+                        {onPriorityChange ? (
+                          <PriorityCell
+                            priority={task.priority}
+                            onChange={(next) => void onPriorityChange(task.id, next)}
+                          />
+                        ) : (
+                          <PriorityChip priority={task.priority} />
+                        )}
                       </div>
                     ) : null}
 
                     {fields.members ? (
                       <div className="flex w-[76px] shrink-0 items-center">
-                        {task.members.length > 0 ? (
+                        {onMembersChange ? (
+                          <MembersCell
+                            members={task.members}
+                            onChange={(ids) => void onMembersChange(task.id, ids)}
+                          />
+                        ) : task.members.length > 0 ? (
                           task.members.map((member) => (
                             <Avatar
                               key={member.id}
@@ -128,7 +152,12 @@ export function TaskTable({
 
                     {fields.dueDate ? (
                       <div className="w-[104px] shrink-0 text-[12.5px] text-[var(--text)]">
-                        {task.dueDate ? (
+                        {onDueDateChange ? (
+                          <DueDateCell
+                            dueDate={task.dueDate}
+                            onChange={(iso) => void onDueDateChange(task.id, iso)}
+                          />
+                        ) : task.dueDate ? (
                           formatDateLong(task.dueDate)
                         ) : (
                           <span className="text-[var(--text-subtle)]">—</span>
@@ -162,27 +191,53 @@ export function TaskTable({
                     <div className="min-w-0 flex-1">
                       {title}
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                        {fields.priority ? <PriorityChip priority={task.priority} /> : null}
-                        {fields.dueDate && task.dueDate ? (
-                          <span className="text-[11.5px] text-[var(--text-muted)]">
-                            {formatDateLong(task.dueDate)}
-                          </span>
+                        {fields.priority ? (
+                          onPriorityChange ? (
+                            <PriorityCell
+                              priority={task.priority}
+                              onChange={(next) => void onPriorityChange(task.id, next)}
+                            />
+                          ) : (
+                            <PriorityChip priority={task.priority} />
+                          )
                         ) : null}
+
+                        {fields.dueDate ? (
+                          onDueDateChange ? (
+                            <DueDateCell
+                              dueDate={task.dueDate}
+                              onChange={(iso) => void onDueDateChange(task.id, iso)}
+                            />
+                          ) : task.dueDate ? (
+                            <span className="text-[11.5px] text-[var(--text-muted)]">
+                              {formatDateLong(task.dueDate)}
+                            </span>
+                          ) : null
+                        ) : null}
+
                         {fields.members ? (
-                          <span className="flex items-center">
-                            {task.members.length > 0 ? (
-                              task.members.map((member) => (
-                                <Avatar
-                                  key={member.id}
-                                  name={member.name}
-                                  src={member.avatar}
-                                  size="xs"
-                                />
-                              ))
-                            ) : (
-                              <AvatarAdd size="xs" />
-                            )}
-                          </span>
+                          onMembersChange ? (
+                            <MembersCell
+                              members={task.members}
+                              size="xs"
+                              onChange={(ids) => void onMembersChange(task.id, ids)}
+                            />
+                          ) : (
+                            <span className="flex items-center">
+                              {task.members.length > 0 ? (
+                                task.members.map((member) => (
+                                  <Avatar
+                                    key={member.id}
+                                    name={member.name}
+                                    src={member.avatar}
+                                    size="xs"
+                                  />
+                                ))
+                              ) : (
+                                <AvatarAdd size="xs" />
+                              )}
+                            </span>
+                          )
                         ) : null}
                       </div>
                     </div>
@@ -211,9 +266,9 @@ export function TaskTable({
 
           {onAdd ? (
             <InlineAdd
+              ref={addRef}
               label={addLabel}
               onSubmit={onAdd}
-              addTarget={addTarget}
               className={cn(tasks.length > 0 && "border-t border-[var(--border)]")}
             />
           ) : null}
@@ -221,4 +276,5 @@ export function TaskTable({
       ) : null}
     </section>
   );
-}
+  },
+);

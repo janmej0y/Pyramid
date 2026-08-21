@@ -129,6 +129,16 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     reloadSubtasks();
   }
 
+  async function changeSubtaskMembers(id: string, memberIds: string[]) {
+    await api.updateTask(id, { assigneeIds: memberIds });
+    reloadSubtasks();
+  }
+
+  async function changeSubtaskDueDate(id: string, dueDate: string) {
+    await api.updateTask(id, { dueDate });
+    reloadSubtasks();
+  }
+
   async function deleteTask() {
     await api.deleteTask(taskId);
     router.push("/tasks");
@@ -349,6 +359,8 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
               onAdd={addSubtask}
               onDelete={deleteSubtask}
               onPriorityChange={changeSubtaskPriority}
+              onMembersChange={changeSubtaskMembers}
+              onDueDateChange={changeSubtaskDueDate}
             />
           </div>
 

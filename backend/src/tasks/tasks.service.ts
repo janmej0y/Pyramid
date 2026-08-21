@@ -88,8 +88,12 @@ export class TasksService {
       this.taskModel.countDocuments(filter).exec(),
     ]);
 
+    const counts = await this.subtaskCounts(items.map((task) => task._id));
+
     return {
-      items: await Promise.all(items.map((task) => this.toResponse(task))),
+      items: items.map((task) =>
+        this.toResponse(task, counts.get(task._id.toString()) ?? 0),
+      ),
       total,
       skip,
       take,
@@ -107,12 +111,11 @@ export class TasksService {
       .sort({ position: 1, createdAt: 1 })
       .exec();
 
-    const groups = new Map<
-      string,
-      Awaited<ReturnType<typeof this.toResponse>>[]
-    >();
+    const counts = await this.subtaskCounts(tasks.map((task) => task._id));
+
+    const groups = new Map<string, ReturnType<typeof this.toResponse>[]>();
     for (const task of tasks) {
-      const view = await this.toResponse(task);
+      const view = this.toResponse(task, counts.get(task._id.toString()) ?? 0);
       const bucket = groups.get(task.status) ?? [];
       bucket.push(view);
       groups.set(task.status, bucket);
@@ -123,7 +126,8 @@ export class TasksService {
 
   async findOne(id: string) {
     const task = await this.findDocument(id);
-    return this.toResponse(task);
+    const counts = await this.subtaskCounts([task._id]);
+    return this.toResponse(task, counts.get(task._id.toString()) ?? 0);
   }
 
   async update(id: string, dto: UpdateTaskDto) {
@@ -260,12 +264,29 @@ export class TasksService {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  /** Flattens the document into the JSON shape the frontend consumes. */
-  private async toResponse(task: TaskDocument) {
-    const subtaskCount = await this.taskModel
-      .countDocuments({ parent: task._id })
+  /**
+   * Counts subtasks for many parents in one aggregation.
+   *
+   * Previously each task ran its own countDocuments, so a 16-task board issued
+   * 17 serialized round-trips — about 1.4s against a remote Atlas cluster.
+   */
+  private async subtaskCounts(
+    parentIds: Types.ObjectId[],
+  ): Promise<Map<string, number>> {
+    if (parentIds.length === 0) return new Map();
+
+    const rows = await this.taskModel
+      .aggregate<{ _id: Types.ObjectId; count: number }>([
+        { $match: { parent: { $in: parentIds } } },
+        { $group: { _id: '$parent', count: { $sum: 1 } } },
+      ])
       .exec();
 
+    return new Map(rows.map((row) => [row._id.toString(), row.count]));
+  }
+
+  /** Flattens the document into the JSON shape the frontend consumes. */
+  private toResponse(task: TaskDocument, subtaskCount = 0) {
     const project = task.project as unknown as {
       _id: Types.ObjectId;
       name: string;

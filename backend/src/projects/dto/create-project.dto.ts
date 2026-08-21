@@ -22,7 +22,12 @@ export class CreateProjectDto {
   @IsDateString({}, { message: 'dueDate must be an ISO 8601 date string' })
   dueDate?: string;
 
+  /**
+   * `null` explicitly unassigns the lead. `@IsOptional()` already permits it —
+   * it skips validation for both null and undefined — so the union type is
+   * what makes the intent visible to callers.
+   */
   @IsOptional()
   @IsString({ message: 'leadId must be a string' })
-  leadId?: string;
+  leadId?: string | null;
 }

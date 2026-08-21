@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { PageToolbar } from "@/components/layout/page-toolbar";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskTable } from "@/components/tasks/task-table";
+import type { InlineAddHandle } from "@/components/tasks/inline-add";
 import { api, type ApiTask } from "@/lib/api";
 import { useAsync, useDebounced } from "@/lib/hooks";
 import { STATUS_OPTIONS } from "@/lib/constants";
@@ -49,6 +50,10 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
   // Debounced so typing in the toolbar doesn't fire a request per keystroke.
   const debouncedSearch = useDebounced(search);
 
+  // Inline-add handles keyed by status, so the toolbar can open the first
+  // rendered group's field directly rather than dispatching a DOM click.
+  const addHandles = useRef(new Map<string, InlineAddHandle>());
+
   const { data, loading, error, reload } = useAsync(
     () => api.groupedTasks(projectId),
     [projectId],
@@ -86,14 +91,14 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
     reload();
   }
 
-  /**
-   * The toolbar's "Add Task" opens the first column's inline field rather than
-   * a modal, since the design has no create dialog.
-   */
-  function focusFirstAdd() {
-    const target = document.querySelector<HTMLElement>("[data-add-target]");
-    target?.scrollIntoView({ block: "center", behavior: "smooth" });
-    target?.click();
+  async function changeMembers(id: string, memberIds: string[]) {
+    await api.updateTask(id, { assigneeIds: memberIds });
+    reload();
+  }
+
+  async function changeDueDate(id: string, dueDate: string) {
+    await api.updateTask(id, { dueDate });
+    reload();
   }
 
   // Search and priority filters are applied client-side against the already
@@ -120,6 +125,16 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
 
   const isFiltering = Boolean(debouncedSearch.trim() || filterPriority);
 
+  /**
+   * The toolbar's "Add Task" opens the first group's inline field rather than a
+   * modal, since the design has no create dialog. Declared after `groups` so
+   * the React Compiler can still memoize that computation.
+   */
+  function handleToolbarAdd() {
+    const first = groups[0]?.status;
+    if (first) addHandles.current.get(first)?.open();
+  }
+
   return (
     <>
       <PageToolbar
@@ -136,7 +151,7 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
         onSearchOpenChange={setSearchOpen}
         filterPriority={filterPriority}
         onFilterPriorityChange={setFilterPriority}
-        onAdd={focusFirstAdd}
+        onAdd={handleToolbarAdd}
       />
 
       {error ? (
@@ -153,23 +168,40 @@ export function TasksView({ projectId }: { projectId?: string } = {}) {
         </p>
       ) : view === "list" ? (
         <div className="px-4 pb-8 sm:px-5">
-          {groups.map((group, index) => (
+          {groups.map((group) => (
             <TaskTable
               key={group.status}
+              /*
+               * Handles are registered by status, so the toolbar can open a
+               * specific group's field regardless of render order.
+               */
+              ref={(handle) => {
+                if (handle) addHandles.current.set(group.status, handle);
+                else addHandles.current.delete(group.status);
+              }}
               group={group.status}
               tasks={group.items}
               fields={fields}
               linkPrefix="/tasks"
-              addTarget={index === 0}
               onAdd={(title) => createTask(group.status, title)}
               onDelete={deleteTask}
               onStatusChange={changeStatus}
               onPriorityChange={changePriority}
+              onMembersChange={changeMembers}
+              onDueDateChange={changeDueDate}
             />
           ))}
         </div>
       ) : (
         <TaskBoard
+          // The board owns all its columns, so a single handle for the first
+          // column is enough — keyed the same way for a consistent lookup.
+          ref={(handle) => {
+            const first = groups[0]?.status;
+            if (!first) return;
+            if (handle) addHandles.current.set(first, handle);
+            else addHandles.current.delete(first);
+          }}
           columns={groups.map((group) => ({
             status: group.status,
             tasks: group.items,

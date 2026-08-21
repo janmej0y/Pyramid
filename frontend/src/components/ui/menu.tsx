@@ -6,10 +6,12 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { CheckIcon, ChevronRightIcon } from "@/components/ui/icons";
 
@@ -19,6 +21,8 @@ type MenuContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
   menuId: string;
+  /** The panel is portalled, so it positions itself against this element. */
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
 };
 
 const MenuContext = createContext<MenuContextValue | null>(null);
@@ -48,6 +52,7 @@ export function Menu({
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : uncontrolledOpen;
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
 
   const setOpen = useCallback(
@@ -62,13 +67,17 @@ export function Menu({
     if (!open) return;
 
     function onPointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      // The panel is portalled outside rootRef, so it needs its own check —
+      // otherwise clicking any menu item would immediately close the menu.
+      const inPanel = (target as Element | null)?.closest?.("[data-menu-panel]");
+      if (!rootRef.current?.contains(target) && !inPanel) setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.stopPropagation();
         setOpen(false);
-        rootRef.current?.querySelector<HTMLElement>("[data-menu-trigger]")?.focus();
+        triggerRef.current?.focus();
       }
     }
 
@@ -80,7 +89,10 @@ export function Menu({
     };
   }, [open, setOpen]);
 
-  const value = useMemo(() => ({ open, setOpen, menuId }), [open, setOpen, menuId]);
+  const value = useMemo(
+    () => ({ open, setOpen, menuId, triggerRef }),
+    [open, setOpen, menuId],
+  );
 
   return (
     <MenuContext.Provider value={value}>
@@ -101,9 +113,10 @@ export function MenuTrigger({
   className?: string;
   asChildProps?: Record<string, unknown>;
 } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "children">) {
-  const { open, setOpen, menuId } = useMenuContext("MenuTrigger");
+  const { open, setOpen, menuId, triggerRef } = useMenuContext("MenuTrigger");
   return (
     <button
+      ref={triggerRef}
       type="button"
       data-menu-trigger
       aria-haspopup="menu"
@@ -119,6 +132,14 @@ export function MenuTrigger({
   );
 }
 
+/**
+ * Popover panel.
+ *
+ * Rendered through a portal into <body> with fixed positioning: table rows sit
+ * inside an `overflow-hidden` card (needed for its rounded corners), which
+ * would otherwise clip the menu — a long menu lost more than half its items.
+ * Escaping to the body also means no ancestor's stacking context can bury it.
+ */
 export function MenuContent({
   children,
   align = "start",
@@ -132,23 +153,78 @@ export function MenuContent({
   sideOffset?: number;
   width?: number | string;
 }) {
-  const { open, menuId } = useMenuContext("MenuContent");
-  if (!open) return null;
+  const { open, menuId, triggerRef } = useMenuContext("MenuContent");
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
-  return (
+  // Measure after layout, when both trigger and panel have real dimensions.
+  // No reset on close: the panel unmounts, so `pos` is re-measured on the next
+  // open anyway — and clearing it here would be a setState inside an effect.
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    function place() {
+      const trigger = triggerRef.current;
+      const panel = panelRef.current;
+      if (!trigger || !panel) return;
+
+      const t = trigger.getBoundingClientRect();
+      const p = panel.getBoundingClientRect();
+      const margin = 8;
+
+      let left = align === "end" ? t.right - p.width : t.left;
+      // Keep the panel inside the viewport horizontally.
+      left = Math.min(
+        Math.max(margin, left),
+        window.innerWidth - p.width - margin,
+      );
+
+      // Flip above the trigger when there isn't room below.
+      let top = t.bottom + sideOffset;
+      if (top + p.height > window.innerHeight - margin) {
+        const above = t.top - p.height - sideOffset;
+        top = above >= margin ? above : Math.max(margin, window.innerHeight - p.height - margin);
+      }
+
+      setPos({ top, left });
+    }
+
+    place();
+
+    // Reposition rather than drift out of place while the page moves.
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, align, sideOffset, triggerRef]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
+      ref={panelRef}
       id={menuId}
       role="menu"
-      style={{ marginTop: sideOffset, width }}
+      data-menu-panel
+      style={{
+        width,
+        top: pos?.top ?? 0,
+        left: pos?.left ?? 0,
+        // Hidden for the first frame, before placement is measured.
+        visibility: pos ? "visible" : "hidden",
+      }}
       className={cn(
-        "absolute z-50 min-w-[180px] rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-[var(--shadow-menu)]",
+        "fixed z-[100] max-h-[min(70vh,420px)] min-w-[180px] overflow-y-auto rounded-xl",
+        "border border-[var(--border)] bg-[var(--surface)] p-1 shadow-[var(--shadow-menu)]",
         "origin-top animate-[menu-in_120ms_ease-out]",
-        align === "end" ? "right-0" : "left-0",
         className,
       )}
     >
       {children}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

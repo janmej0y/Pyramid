@@ -1,12 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PageToolbar } from "@/components/layout/page-toolbar";
 import { Avatar, AvatarAdd } from "@/components/ui/avatar";
 import { PriorityChip } from "@/components/ui/chips";
-import { InlineAdd } from "@/components/tasks/inline-add";
+import { InlineAdd, type InlineAddHandle } from "@/components/tasks/inline-add";
 import { RowActions } from "@/components/tasks/row-actions";
+import {
+  DueDateCell,
+  MembersCell,
+  PriorityCell,
+} from "@/components/tasks/cell-editors";
 import { api } from "@/lib/api";
 import { useAsync, useDebounced } from "@/lib/hooks";
 import { formatDateLong } from "@/lib/utils";
@@ -31,6 +36,9 @@ export function ProjectsView() {
   const debouncedSearch = useDebounced(search);
   const { data, loading, error, reload } = useAsync(() => api.listProjects(), []);
 
+  // Lets the toolbar button open the inline field directly.
+  const addRef = useRef<InlineAddHandle>(null);
+
   async function createProject(name: string) {
     const due = new Date();
     due.setDate(due.getDate() + 30);
@@ -48,10 +56,20 @@ export function ProjectsView() {
     reload();
   }
 
-  function focusFirstAdd() {
-    const target = document.querySelector<HTMLElement>("[data-add-target]");
-    target?.scrollIntoView({ block: "center", behavior: "smooth" });
-    target?.click();
+  /** Projects have a single lead, so only the first selection is kept. */
+  async function changeProjectLead(id: string, memberIds: string[]) {
+    await api.updateProject(id, { leadId: memberIds.at(-1) ?? null });
+    reload();
+  }
+
+  async function changeProjectDueDate(id: string, dueDate: string) {
+    await api.updateProject(id, { dueDate });
+    reload();
+  }
+
+  /** The toolbar's "Add Project" opens the inline field at the table's foot. */
+  function handleToolbarAdd() {
+    addRef.current?.open();
   }
 
   const visible = useMemo(() => {
@@ -76,7 +94,7 @@ export function ProjectsView() {
         onSearchOpenChange={setSearchOpen}
         filterPriority={filterPriority}
         onFilterPriorityChange={setFilterPriority}
-        onAdd={focusFirstAdd}
+        onAdd={handleToolbarAdd}
       />
 
       {error ? (
@@ -115,25 +133,33 @@ export function ProjectsView() {
                     </Link>
                   </div>
 
+                  {/* Editable in place, like the task table. */}
                   {fields.priority ? (
                     <div className="w-[88px] shrink-0">
-                      <PriorityChip priority={project.priority} />
+                      <PriorityCell
+                        priority={project.priority}
+                        onChange={(next) =>
+                          void changeProjectPriority(project.id, next)
+                        }
+                      />
                     </div>
                   ) : null}
 
                   {fields.members ? (
                     <div className="flex w-[76px] shrink-0 items-center">
-                      {project.lead ? (
-                        <Avatar name={project.lead.name} src={project.lead.avatar} size="sm" />
-                      ) : (
-                        <AvatarAdd size="sm" />
-                      )}
+                      <MembersCell
+                        members={project.lead ? [project.lead] : []}
+                        onChange={(ids) => void changeProjectLead(project.id, ids)}
+                      />
                     </div>
                   ) : null}
 
                   {fields.dueDate ? (
                     <div className="w-[104px] shrink-0 text-[12.5px] text-[var(--text)]">
-                      {project.dueDate ? formatDateLong(project.dueDate) : "—"}
+                      <DueDateCell
+                        dueDate={project.dueDate ?? ""}
+                        onChange={(iso) => void changeProjectDueDate(project.id, iso)}
+                      />
                     </div>
                   ) : null}
 
@@ -190,10 +216,10 @@ export function ProjectsView() {
           </ul>
 
           <InlineAdd
+            ref={addRef}
             label="Add Projects"
             placeholder="Project name"
             onSubmit={createProject}
-            addTarget
             className={visible.length > 0 ? "border-t border-[var(--border)]" : undefined}
           />
         </div>

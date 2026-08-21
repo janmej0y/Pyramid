@@ -55,17 +55,41 @@ export class ProjectsService {
       this.projectModel.countDocuments(filter).exec(),
     ]);
 
+    const counts = await this.taskCounts(items.map((p) => p._id));
+
     return {
-      items: await Promise.all(items.map((p) => this.toResponse(p))),
+      items: items.map((p) =>
+        this.toResponse(p, counts.get(p._id.toString()) ?? 0),
+      ),
       total,
       skip,
       take,
     };
   }
 
+  /**
+   * Task counts for many projects in one aggregation, rather than a
+   * countDocuments per row — the same N+1 that made the task board slow.
+   */
+  private async taskCounts(
+    projectIds: Types.ObjectId[],
+  ): Promise<Map<string, number>> {
+    if (projectIds.length === 0) return new Map();
+
+    const rows = await this.taskModel
+      .aggregate<{ _id: Types.ObjectId; count: number }>([
+        { $match: { project: { $in: projectIds } } },
+        { $group: { _id: '$project', count: { $sum: 1 } } },
+      ])
+      .exec();
+
+    return new Map(rows.map((row) => [row._id.toString(), row.count]));
+  }
+
   async findOne(id: string) {
     const project = await this.findDocument(id);
-    return this.toResponse(project);
+    const counts = await this.taskCounts([project._id]);
+    return this.toResponse(project, counts.get(project._id.toString()) ?? 0);
   }
 
   async update(id: string, dto: UpdateProjectDto) {
@@ -122,7 +146,8 @@ export class ProjectsService {
     return project;
   }
 
-  private async assertLeadExists(leadId?: string) {
+  private async assertLeadExists(leadId?: string | null) {
+    // null/undefined both mean "no lead", which needs no lookup.
     if (!leadId) return;
     if (!Types.ObjectId.isValid(leadId)) {
       throw new NotFoundException(`User ${leadId} not found`);
@@ -135,11 +160,7 @@ export class ProjectsService {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  private async toResponse(project: ProjectDocument) {
-    const taskCount = await this.taskModel
-      .countDocuments({ project: project._id })
-      .exec();
-
+  private toResponse(project: ProjectDocument, taskCount = 0) {
     return {
       id: project._id.toString(),
       name: project.name,

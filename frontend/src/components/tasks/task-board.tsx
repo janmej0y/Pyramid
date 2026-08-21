@@ -1,11 +1,12 @@
 "use client";
 
+import { forwardRef } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { DueChip, LabelChip } from "@/components/ui/chips";
 import { GripVerticalIcon, MoreHorizontalIcon, TrashIcon } from "@/components/ui/icons";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
-import { InlineAdd } from "@/components/tasks/inline-add";
+import { InlineAdd, type InlineAddHandle } from "@/components/tasks/inline-add";
 import { RowActions } from "@/components/tasks/row-actions";
 import type { Priority, Task } from "@/lib/types";
 
@@ -116,13 +117,13 @@ function BoardCard({
  * Horizontally scrolling kanban board. Columns keep a fixed width so cards stay
  * legible; the row scrolls rather than compressing them.
  */
-export function TaskBoard({
-  columns,
-  onAdd,
-  onDelete,
-  onStatusChange,
-  onPriorityChange,
-}: { columns: BoardColumn[] } & BoardHandlers) {
+export const TaskBoard = forwardRef<
+  InlineAddHandle,
+  { columns: BoardColumn[] } & BoardHandlers
+>(function TaskBoard(
+  { columns, onAdd, onDelete, onStatusChange, onPriorityChange },
+  addRef,
+) {
   return (
     <div className="flex gap-3 overflow-x-auto px-4 pb-6 sm:px-5">
       {columns.map((column, index) => (
@@ -160,9 +161,9 @@ export function TaskBoard({
 
             {onAdd ? (
               <InlineAdd
+                ref={index === 0 ? addRef : undefined}
                 label="Add Task"
                 onSubmit={(title) => onAdd(column.status, title)}
-                addTarget={index === 0}
                 className="rounded-md px-1.5 py-1.5 text-[12px]"
               />
             ) : null}
@@ -171,4 +172,4 @@ export function TaskBoard({
       ))}
     </div>
   );
-}
+});
