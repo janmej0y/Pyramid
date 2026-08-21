@@ -1,0 +1,16 @@
+# Netlify build settings for the Next.js app.
+#
+# This file sits inside frontend/, so Netlify reads it only when the site's
+# base directory is set to `frontend` — the paths below are then relative to
+# that directory.
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# Provides SSR and route handlers for the App Router. Without it, the two
+# dynamic routes (/tasks/[id], /projects/[id]) cannot render.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "22"
