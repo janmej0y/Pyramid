@@ -365,7 +365,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
           </div>
 
           {/* Comment thread */}
-          <h2 className="mb-2 text-[13px] font-medium text-[var(--text)]">Subtasks</h2>
+          <h2 className="mb-2 text-[13px] font-medium text-[var(--text)]">Comments</h2>
 
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)]">
             {commentsLoading ? (
