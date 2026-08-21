@@ -355,6 +355,19 @@ export const GripVerticalIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const UndoIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 7v6h6" />
+    <path d="M3 13a9 9 0 1 0 3-7.7L3 8" />
+  </Icon>
+);
+
+export const XIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </Icon>
+);
+
 /**
  * Priority glyph — ascending bars, like a signal indicator. Filled bars encode
  * the level (urgent = 3, high = 2, medium = 2 mid, low = 1).

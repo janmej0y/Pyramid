@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/menu";
 import { TaskTable } from "@/components/tasks/task-table";
 import { TaskDetailsPanel } from "@/components/tasks/task-details-panel";
+import { TaskDetailSkeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import {
   AtSignIcon,
   CalendarIcon,
@@ -66,6 +68,15 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   const [copied, setCopied] = useState(false);
   const { user } = useAuth();
   const router = useRouter();
+  const { showToast } = useToast();
+
+  /** Surfaces a failed mutation instead of leaving the UI silently unchanged. */
+  function reportFailure(action: string, err: unknown) {
+    showToast({
+      message: err instanceof Error ? `${action}: ${err.message}` : `${action} failed`,
+      tone: "danger",
+    });
+  }
 
   const {
     data: task,
@@ -119,9 +130,38 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
     reloadSubtasks();
   }
 
+  /** Deletes a subtask with an undo window, matching the list views. */
   async function deleteSubtask(id: string) {
-    await api.deleteTask(id);
-    reloadSubtasks();
+    const original = (subtaskData ?? []).find((entry) => entry.id === id);
+
+    try {
+      await api.deleteTask(id);
+      reloadSubtasks();
+    } catch (err) {
+      reportFailure("Could not delete subtask", err);
+      return;
+    }
+
+    if (!original) return;
+
+    showToast({
+      message: `Deleted "${original.title}"`,
+      actionLabel: "Undo",
+      onAction: async () => {
+        try {
+          await api.createTask({
+            title: original.title,
+            parentId: taskId,
+            priority: original.priority,
+            dueDate: original.dueDate ?? undefined,
+            assigneeIds: original.members.map((member) => member.id),
+          });
+          reloadSubtasks();
+        } catch (err) {
+          reportFailure("Could not restore subtask", err);
+        }
+      },
+    });
   }
 
   async function changeSubtaskPriority(id: string, priority: Priority) {
@@ -155,9 +195,7 @@ export function TaskDetailView({ taskId }: { taskId: string }) {
   }
 
   if (loading) {
-    return (
-      <p className="px-6 py-10 text-[13px] text-[var(--text-muted)]">Loading task…</p>
-    );
+    return <TaskDetailSkeleton />;
   }
 
   if (error || !task) {

@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { ToastProvider } from "@/components/ui/toast";
 import { DEFAULT_ACCENT, DEFAULT_THEME, themeInitScript } from "@/lib/theme";
 
 const inter = Inter({
@@ -14,6 +15,13 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Pyramid",
   description: "Task management system",
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Lets the layout extend under notches on phones that report safe areas.
+  viewportFit: "cover" as const,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -35,7 +43,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="antialiased">
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

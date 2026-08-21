@@ -109,7 +109,9 @@ function Field({
             }
           }}
           className={cn(
-            "w-[168px] rounded-md bg-[var(--hover)] px-3 py-1.5 text-[12.5px] text-[var(--text)]",
+            // Fluid below the fixed width so the label keeps room on narrow
+            // phones; the row would otherwise crowd at ~320px.
+            "w-[clamp(112px,38vw,168px)] rounded-md bg-[var(--hover)] px-3 py-1.5 text-[12.5px] text-[var(--text)]",
             "focus:outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:opacity-60",
             showPencil && "bg-transparent text-right text-[var(--text-muted)]",
           )}

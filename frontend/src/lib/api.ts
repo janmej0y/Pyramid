@@ -161,8 +161,18 @@ export const api = {
 
   getTask: (id: string) => request<ApiTask>(`/tasks/${id}`),
 
-  createTask: (body: Partial<ApiTask> & { title: string }) =>
-    request<ApiTask>("/tasks", { method: "POST", body: JSON.stringify(body) }),
+  /**
+   * `assigneeIds`/`labels` are write-only shapes — the API accepts ids and label
+   * names, but returns hydrated `members`/`labels`, so they aren't on ApiTask.
+   */
+  createTask: (
+    body: Partial<Omit<ApiTask, "members" | "reporter" | "project">> & {
+      title: string;
+      assigneeIds?: string[];
+      labels?: string[];
+      parentId?: string;
+    },
+  ) => request<ApiTask>("/tasks", { method: "POST", body: JSON.stringify(body) }),
 
   updateTask: (id: string, body: Record<string, unknown>) =>
     request<ApiTask>(`/tasks/${id}`, {

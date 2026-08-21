@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { SidebarIcon } from "@/components/ui/icons";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,7 +12,7 @@ import { cn } from "@/lib/utils";
  *
  * Desktop: the sidebar is a static column that collapses via the topbar toggle.
  * Mobile:  the same toggle opens the sidebar as an overlay drawer, since a
- *          240px fixed column would leave no room for the content.
+ *          fixed column would leave no room for the content.
  */
 export function AppShell({
   children,
@@ -24,6 +25,11 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
   const [lastPathname, setLastPathname] = useState(pathname);
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  // Tab stays inside the drawer while it is open, and focus returns to the
+  // trigger when it closes.
+  useFocusTrap(drawerRef, mobileOpen);
 
   // Close the drawer on navigation so it never covers the destination page.
   // Adjusting during render (rather than in an effect) avoids a frame where the
@@ -52,12 +58,12 @@ export function AppShell({
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--app-bg)]">
-      {/* Desktop sidebar */}
+    <div className="flex h-[100dvh] overflow-hidden bg-[var(--app-bg)]">
+      {/* Desktop sidebar. Widens on larger viewports rather than staying fixed. */}
       <aside
         className={cn(
           "hidden shrink-0 transition-[width] duration-200 ease-out md:block",
-          collapsed ? "w-0 overflow-hidden" : "w-[210px] lg:w-[228px]",
+          collapsed ? "w-0 overflow-hidden" : "w-[210px] lg:w-[228px] xl:w-[244px]",
         )}
       >
         <Sidebar />
@@ -71,7 +77,13 @@ export function AppShell({
             onClick={() => setMobileOpen(false)}
             aria-hidden="true"
           />
-          <div className="absolute inset-y-0 left-0 w-[248px] animate-[drawer-in_180ms_ease-out] shadow-xl">
+          <div
+            ref={drawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="absolute inset-y-0 left-0 w-[min(84vw,278px)] animate-[drawer-in_180ms_ease-out] shadow-xl"
+          >
             <Sidebar onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
@@ -83,6 +95,7 @@ export function AppShell({
             type="button"
             onClick={() => setCollapsed((v) => !v)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
             className="hidden h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)] md:inline-flex"
           >
             <SidebarIcon size={16} />
@@ -92,6 +105,7 @@ export function AppShell({
             type="button"
             onClick={() => setMobileOpen(true)}
             aria-label="Open sidebar"
+            aria-expanded={mobileOpen}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)] md:hidden"
           >
             <SidebarIcon size={16} />

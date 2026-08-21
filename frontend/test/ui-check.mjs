@@ -265,7 +265,12 @@ if (await visible(created)) {
     .waitFor({ state: "detached", timeout: 15000 })
     .catch(() => {});
 }
-check("task deleted", !(await visible(page.getByText("Renamed in Mongo"))));
+// Scoped to the list: deleting now raises an undo toast that quotes the task
+// title, so a page-wide text search matches the toast and not a surviving row.
+check(
+  "task deleted",
+  !(await visible(page.locator("li", { hasText: "Renamed in Mongo" }))),
+);
 
 console.log(`\n\x1b[36m======================\x1b[0m\npassed: ${pass}  failed: ${fail}`);
 console.log("console errors:", errors.length ? errors.slice(0, 5) : "none");

@@ -12,10 +12,14 @@ import {
   MembersCell,
   PriorityCell,
 } from "@/components/tasks/cell-editors";
+import { ProjectsTableSkeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAsync, useDebounced } from "@/lib/hooks";
+import { matchesFilters } from "@/lib/filters";
 import { formatDateLong } from "@/lib/utils";
-import type { FieldKey, Priority } from "@/lib/types";
+import { EMPTY_FILTERS } from "@/lib/types";
+import type { FieldKey, Filters, Member, Priority } from "@/lib/types";
 
 const DEFAULT_FIELDS: Record<FieldKey, boolean> = {
   priority: true,
@@ -31,10 +35,19 @@ export function ProjectsView() {
   const [fields, setFields] = useState(DEFAULT_FIELDS);
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [filterPriority, setFilterPriority] = useState<Priority | null>(null);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const { showToast } = useToast();
 
   const debouncedSearch = useDebounced(search);
   const { data, loading, error, reload } = useAsync(() => api.listProjects(), []);
+
+  /** Surfaces a failed mutation instead of leaving the UI silently unchanged. */
+  function reportFailure(action: string, err: unknown) {
+    showToast({
+      message: err instanceof Error ? `${action}: ${err.message}` : `${action} failed`,
+      tone: "danger",
+    });
+  }
 
   // Lets the toolbar button open the inline field directly.
   const addRef = useRef<InlineAddHandle>(null);
@@ -42,29 +55,73 @@ export function ProjectsView() {
   async function createProject(name: string) {
     const due = new Date();
     due.setDate(due.getDate() + 30);
-    await api.createProject({ name, dueDate: due.toISOString() });
-    reload();
+    try {
+      await api.createProject({ name, dueDate: due.toISOString() });
+      reload();
+    } catch (err) {
+      reportFailure("Could not create project", err);
+    }
   }
 
+  /** Deletes with an undo window that re-creates the project on demand. */
   async function deleteProject(id: string) {
-    await api.deleteProject(id);
-    reload();
+    const original = data?.items.find((project) => project.id === id);
+
+    try {
+      await api.deleteProject(id);
+      reload();
+    } catch (err) {
+      reportFailure("Could not delete project", err);
+      return;
+    }
+
+    if (!original) return;
+
+    showToast({
+      message: `Deleted "${original.name}"`,
+      actionLabel: "Undo",
+      onAction: async () => {
+        try {
+          await api.createProject({
+            name: original.name,
+            priority: original.priority,
+            dueDate: original.dueDate ?? undefined,
+            leadId: original.lead?.id,
+          });
+          reload();
+        } catch (err) {
+          reportFailure("Could not restore project", err);
+        }
+      },
+    });
   }
 
   async function changeProjectPriority(id: string, priority: Priority) {
-    await api.updateProject(id, { priority });
-    reload();
+    try {
+      await api.updateProject(id, { priority });
+      reload();
+    } catch (err) {
+      reportFailure("Could not change priority", err);
+    }
   }
 
   /** Projects have a single lead, so only the first selection is kept. */
   async function changeProjectLead(id: string, memberIds: string[]) {
-    await api.updateProject(id, { leadId: memberIds.at(-1) ?? null });
-    reload();
+    try {
+      await api.updateProject(id, { leadId: memberIds.at(-1) ?? null });
+      reload();
+    } catch (err) {
+      reportFailure("Could not update lead", err);
+    }
   }
 
   async function changeProjectDueDate(id: string, dueDate: string) {
-    await api.updateProject(id, { dueDate });
-    reload();
+    try {
+      await api.updateProject(id, { dueDate });
+      reload();
+    } catch (err) {
+      reportFailure("Could not update due date", err);
+    }
   }
 
   /** The toolbar's "Add Project" opens the inline field at the table's foot. */
@@ -72,14 +129,35 @@ export function ProjectsView() {
     addRef.current?.open();
   }
 
+  /** Leads double as the member and reporter option sources. */
+  const memberOptions = useMemo(() => {
+    const members = new Map<string, Member>();
+    for (const project of data?.items ?? []) {
+      if (project.lead && !members.has(project.lead.id)) {
+        members.set(project.lead.id, project.lead);
+      }
+    }
+    return [...members.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [data]);
+
   const visible = useMemo(() => {
     const query = debouncedSearch.trim().toLowerCase();
     return (data?.items ?? []).filter((project) => {
       const byQuery = !query || project.name.toLowerCase().includes(query);
-      const byPriority = !filterPriority || project.priority === filterPriority;
-      return byQuery && byPriority;
+      return (
+        byQuery &&
+        matchesFilters(
+          {
+            priority: project.priority,
+            members: project.lead ? [project.lead] : [],
+            dueDate: project.dueDate ?? undefined,
+            reporterId: project.lead?.id,
+          },
+          filters,
+        )
+      );
     });
-  }, [data, debouncedSearch, filterPriority]);
+  }, [data, debouncedSearch, filters]);
 
   return (
     <>
@@ -92,8 +170,9 @@ export function ProjectsView() {
         onSearchChange={setSearch}
         searchOpen={searchOpen}
         onSearchOpenChange={setSearchOpen}
-        filterPriority={filterPriority}
-        onFilterPriorityChange={setFilterPriority}
+        filters={filters}
+        onFiltersChange={setFilters}
+        memberOptions={memberOptions}
         onAdd={handleToolbarAdd}
       />
 
@@ -102,9 +181,9 @@ export function ProjectsView() {
           {error}
         </p>
       ) : loading ? (
-        <p className="px-5 py-10 text-center text-[13px] text-[var(--text-muted)]">
-          Loading projects…
-        </p>
+        <div className="px-4 pb-8 sm:px-5">
+          <ProjectsTableSkeleton fields={fields} />
+        </div>
       ) : (
       <div className="px-4 pb-8 sm:px-5">
         <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
