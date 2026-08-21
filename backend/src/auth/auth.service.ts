@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User } from '../schemas/user.schema';
 import type { AuthUser, JwtPayload } from './jwt.types';
+import type { GoogleProfile } from './google-oauth.service';
 
 /** Inline gradient avatar so guest sessions match the design's user chip. */
 const GUEST_AVATAR =
@@ -41,6 +42,57 @@ export class AuthService {
       isGuest: true,
       avatar: GUEST_AVATAR,
     });
+
+    const id = user._id.toString();
+
+    return {
+      accessToken: await this.signToken(id, user.name, user.isGuest),
+      user: {
+        id,
+        name: user.name,
+        isGuest: user.isGuest,
+        avatar: user.avatar ?? null,
+      },
+    };
+  }
+
+  /**
+   * Finds or creates the account behind a Google profile, then issues a token.
+   *
+   * Matching prefers `googleId` — it is stable even if the user changes their
+   * Google email. A verified email is used as a secondary match so an account
+   * created some other way with the same address is adopted rather than
+   * duplicated.
+   */
+  async loginWithGoogle(profile: GoogleProfile): Promise<{
+    accessToken: string;
+    user: AuthUser & { avatar: string | null };
+  }> {
+    let user = await this.userModel.findOne({ googleId: profile.googleId });
+
+    if (!user && profile.email) {
+      user = await this.userModel.findOne({ email: profile.email });
+      if (user) {
+        // Link the existing account to Google on first federated sign-in.
+        user.googleId = profile.googleId;
+        // A previously guest account becomes a real one.
+        user.isGuest = false;
+        user.avatar = user.avatar ?? profile.avatar;
+        await user.save();
+      }
+    }
+
+    if (!user) {
+      user = await this.userModel.create({
+        name: profile.name,
+        // `undefined` rather than null keeps the field absent, which is what
+        // the partial unique indexes on email/googleId require.
+        email: profile.email ?? undefined,
+        googleId: profile.googleId,
+        avatar: profile.avatar,
+        isGuest: false,
+      });
+    }
 
     const id = user._id.toString();
 

@@ -5,12 +5,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/auth-provider";
 import { GoogleIcon } from "@/components/ui/icons";
+import { api, API_BASE_URL } from "@/lib/api";
+import { useAsync } from "@/lib/hooks";
 
 export function LoginCard() {
   const { loginAsGuest } = useAuth();
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [googlePending, setGooglePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Ask the API which methods it has configured, so the Google button is only
+  // offered when the server can actually complete the flow.
+  const { data: providers } = useAsync(() => api.authProviders(), []);
+  const googleEnabled = providers?.google ?? false;
 
   async function handleGuest() {
     setPending(true);
@@ -22,6 +30,21 @@ export function LoginCard() {
       setError("Could not start a guest session. Is the API running?");
       setPending(false);
     }
+  }
+
+  /**
+   * A full-page navigation, not a fetch: Google's consent screen sets its own
+   * cookies and cannot be loaded cross-origin via XHR. The API redirects back
+   * to /auth/callback once it has a session.
+   */
+  function handleGoogle() {
+    setGooglePending(true);
+    setError(null);
+    // Not an internal route, so the router is the wrong tool: this leaves the
+    // app entirely for the API's OAuth entry point, which then redirects on to
+    // accounts.google.com. The lint rule only recognises relative destinations.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = `${API_BASE_URL}/auth/google`;
   }
 
   return (
@@ -38,7 +61,7 @@ export function LoginCard() {
           <button
             type="button"
             onClick={handleGuest}
-            disabled={pending}
+            disabled={pending || googlePending}
             className="flex h-9 w-full items-center justify-center rounded-full bg-[var(--btn-primary-bg)] text-[13px] font-medium text-[var(--btn-primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
           >
             {pending ? "Starting session…" : "Continue as Guest"}
@@ -46,12 +69,17 @@ export function LoginCard() {
 
           <button
             type="button"
-            disabled
-            title="Google sign-in is not part of this assessment scope"
-            className="flex h-9 w-full items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] text-[13px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--hover)] disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={handleGoogle}
+            disabled={!googleEnabled || pending || googlePending}
+            title={
+              googleEnabled
+                ? undefined
+                : "Google sign-in is not configured on this server"
+            }
+            className="flex h-9 w-full items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] text-[13px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--hover)] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
           >
             <GoogleIcon size={15} />
-            Login with Google
+            {googlePending ? "Redirecting…" : "Login with Google"}
           </button>
         </div>
 

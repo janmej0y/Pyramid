@@ -1,6 +1,7 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
@@ -23,6 +24,10 @@ async function bootstrap() {
   );
 
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  // The Google OAuth callback reads the CSRF state cookie it set before the
+  // redirect; nothing else in the app uses cookies.
+  app.use(cookieParser());
 
   const origins = config
     .get<string>('CORS_ORIGIN', 'http://localhost:3000')

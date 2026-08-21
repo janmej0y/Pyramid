@@ -4,6 +4,7 @@ import { JwtModule, type JwtModuleOptions } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { GoogleOAuthService } from './google-oauth.service';
 import { User, UserSchema } from '../schemas/user.schema';
 
 /** The `expiresIn` format accepted by jsonwebtoken, e.g. "7d" / "3600s". */
@@ -30,7 +31,7 @@ type ExpiresIn = NonNullable<
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, GoogleOAuthService],
   // JwtModule is re-exported so the global JwtAuthGuard can verify tokens.
   exports: [JwtModule],
 })

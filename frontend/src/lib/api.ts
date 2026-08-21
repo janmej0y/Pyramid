@@ -1,6 +1,14 @@
 import type { Priority } from "@/lib/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+/**
+ * Exported because the Google sign-in button navigates the browser straight to
+ * `${API_BASE_URL}/auth/google` — a full-page redirect, not a fetch, since the
+ * OAuth consent screen cannot be loaded via XHR.
+ */
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+
+const BASE_URL = API_BASE_URL;
 
 export const TOKEN_STORAGE_KEY = "pyramid.token";
 
@@ -234,6 +242,12 @@ export const api = {
     request<{ id: string }>(`/projects/${id}`, { method: "DELETE" }),
 
   listUsers: () => request<ApiMember[]>("/users"),
+
+  /** Which sign-in methods this deployment has configured. */
+  authProviders: () =>
+    request<{ guest: boolean; google: boolean }>("/auth/providers", {
+      auth: false,
+    }),
 
   updateProfile: (body: {
     name?: string;

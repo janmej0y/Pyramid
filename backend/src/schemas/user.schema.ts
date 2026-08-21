@@ -37,6 +37,24 @@ export class User {
   @Prop({ type: String, default: null })
   avatar?: string | null;
 
+  /**
+   * Google's stable subject identifier, set for accounts created via OAuth.
+   *
+   * Indexed with the same partial-unique treatment as `email`: guests have no
+   * googleId, and a plain unique index would reject the second guest. Matching
+   * on this rather than on email means a user who changes their Google email
+   * still resolves to the same account.
+   */
+  @Prop({
+    type: String,
+    default: undefined,
+    index: {
+      unique: true,
+      partialFilterExpression: { googleId: { $type: 'string' } },
+    },
+  })
+  googleId?: string | null;
+
   /** Guests are created on demand by the guest-login flow. */
   @Prop({ default: false })
   isGuest!: boolean;
