@@ -398,20 +398,30 @@ settings, dark mode, and all five responsive widths.
 
 ## 13. UX/UI & Functionality Improvements: Identified and Implemented
 
-Ten issues were identified while producing this walkthrough. **Eight have been
-implemented**; the remaining two are documented with the reasoning for deferring
-them.
+Twenty issues were identified across two review passes. **Eight have been
+implemented**; the remaining twelve are recorded with severity and the reasoning
+behind deferring them.
 
 Each entry states what was wrong, what changed, and how the change was verified.
 
-### 1. Bug: the comments section was labelled "Subtasks" — *implemented*
+| | Implemented | Deferred | Total |
+|---|---|---|---|
+| **Defects** | 1 | 3 | 4 |
+| **UX gaps** | 5 | 5 | 10 |
+| **Polish** | 2 | 2 | 4 |
+| **Hardening** | 0 | 2 | 2 |
+| **Total** | **8** | **12** | **20** |
+
+---
+
+### Part A — Implemented
+
+#### A1. Bug: the comments section was labelled "Subtasks"
 
 On the task detail page, the comments heading read **"Subtasks"** — the same
 label as the subtask table directly above it, so two adjacent sections carried
-identical headings.
-
-The surrounding code comment already read `{/* Comment thread */}`, confirming
-the label was simply wrong rather than intentional.
+identical headings. The surrounding code comment already read
+`{/* Comment thread */}`, confirming the label was wrong rather than intentional.
 
 **Changed:** the heading now reads "Comments"
 (`frontend/src/components/tasks/task-detail-view.tsx:368`).
@@ -419,18 +429,18 @@ the label was simply wrong rather than intentional.
 **Verified:** the detail page renders exactly one `Subtasks` heading and one
 `Comments` heading, queried from the live DOM.
 
-### 2. Drag-and-drop on the board — *implemented*
+#### A2. Drag-and-drop on the board
 
 The board is where dragging a card between columns is expected, and the column
 headers already rendered a grip handle implying it. Status changes previously
 required the `⋯` menu.
 
-**Changed:** cards now move by pointer drag from the grip handle, with a target
-column highlight, a drop-zone hint, and a cursor-following ghost. Built on
-Pointer Events rather than HTML5 drag-and-drop, which gives no usable drag image
-on touch and cannot be driven from a keyboard.
+**Changed:** cards move by pointer drag from the grip handle, with a target
+column highlight, drop-zone hint, and cursor-following ghost. Built on Pointer
+Events rather than HTML5 drag-and-drop, which gives no usable drag image on
+touch and cannot be driven from a keyboard.
 
-A **full keyboard equivalent** ships alongside it — <kbd>Space</kbd> to pick up,
+A **full keyboard equivalent** ships alongside — <kbd>Space</kbd> to pick up,
 <kbd>←</kbd>/<kbd>→</kbd> to move between columns, <kbd>Space</kbd> to drop,
 <kbd>Esc</kbd> to cancel. Cards expose `aria-grabbed`, and an `aria-live` region
 narrates the held state and target column.
@@ -440,49 +450,44 @@ New module: `frontend/src/lib/use-board-dnd.ts`.
 **Verified:** a card is picked up, moved right, and dropped into the adjacent
 column — asserted against the live DOM.
 
-### 3. All filter categories now functional — *implemented*
+#### A3. All filter categories now functional
 
 The Filter menu listed six categories, but only **Priority** had a working
 flyout; the rest opened empty submenus.
 
 **Changed:** Status, Priority, Members, Due Date, Teams, Labels and Reporter all
-filter. Axes combine with AND, values within an axis with OR — the convention
-users expect from Linear- and Jira-style filter bars. Options are derived from
-the loaded payload, so the menu only ever offers values that exist in the data.
-
-Due Date uses relative buckets (Overdue, Due today, Next 7 days, Next 30 days,
-No due date). The trigger shows an active-filter count, and a "Clear all filters"
-row appears once anything is set.
+filter. Axes combine with AND, values within an axis with OR. Options are derived
+from the loaded payload, so the menu only offers values that exist in the data.
+Due Date uses relative buckets, and the trigger shows an active-filter count with
+a "Clear all filters" row.
 
 New module: `frontend/src/lib/filters.ts`.
 
 > **Teams** correctly reports "No teams" — the API has no teams field, so an
 > empty state is the truthful rendering rather than a fabricated one.
 
-### 4. The Fields menu listed "Members" twice — *implemented*
+#### A4. The Fields menu listed "Members" twice
 
 Two entries shared a label while toggling different columns (`members` and
-`assignees`). This mirrored the design, but two identically labelled checkboxes
-are indistinguishable in use.
+`assignees`), which is indistinguishable in use.
 
 **Changed:** the second row is now labelled "Assignees".
 
-### 5. Undo on delete — *implemented*
+#### A5. Undo on delete
 
-Deleting a task, subtask or project from the `⋯` menu was immediate and
-irreversible.
+Deleting a task, subtask or project was immediate and irreversible.
 
-**Changed:** deletions now raise a toast with a six-second undo window. Undo
-recreates the record with its original priority, due date, members and labels.
-An undo toast was chosen over a confirmation dialog because it is less
-interruptive and recovers the more common regret.
+**Changed:** deletions raise a toast with a six-second undo window, recreating
+the record with its original priority, due date, members and labels. An undo
+toast was chosen over a confirmation dialog because it is less interruptive and
+recovers the more common regret.
 
 New module: `frontend/src/components/ui/toast.tsx`.
 
-**Verified:** delete removes the row, the toast appears, and undo restores the
-task — asserted end to end against the API.
+> **Known incompleteness — see D1.** Undo restores the task itself but not its
+> subtasks or comments, which the API cascade-deletes.
 
-### 6. Mutation failures are now surfaced — *implemented*
+#### A6. Mutation failures are now surfaced
 
 `createTask`, `deleteTask` and the change handlers awaited the API without
 catching, so a failed request left the UI unchanged and unexplained.
@@ -490,7 +495,7 @@ catching, so a failed request left the UI unchanged and unexplained.
 **Changed:** every mutation across tasks, subtasks and projects reports failure
 through a danger toast naming the action that failed.
 
-### 7. Loading skeletons — *implemented*
+#### A7. Loading skeletons
 
 Views rendered loading states but not shaped placeholders, so there was a brief
 empty flash before data arrived — most visible during the roughly 20-second
@@ -501,73 +506,186 @@ heights, so arriving content does not shift the layout.
 
 New module: `frontend/src/components/ui/skeleton.tsx`.
 
-### 8. Accessibility gaps closed — *implemented*
+#### A8. Accessibility gaps closed
 
 ARIA was already used conscientiously — 30 `aria-label`, 11 `aria-expanded`,
-8 `aria-haspopup`, 6 `aria-checked`, plus `aria-current` and `aria-modal`, with
-Escape-to-close menus and a scroll-locking drawer. Two gaps remained.
+8 `aria-haspopup`, 6 `aria-checked`, plus `aria-current` and `aria-modal`. Two
+gaps remained.
 
 **Changed:**
 
-- **Visible focus rings.** A single `:focus-visible` treatment now applies across
-  links, buttons, menu items and inputs — keyboard only, so pointer interaction
-  is unaffected.
-- **Drawer focus trap.** The mobile drawer is a true `role="dialog"` with
-  `aria-modal`; Tab and Shift+Tab stay inside it, and focus returns to the
-  trigger on close. Previously, tabbing escaped to content hidden behind the
-  scrim.
+- **Visible focus rings** — a single `:focus-visible` treatment across links,
+  buttons, menu items and inputs; keyboard only, so pointer interaction is
+  unaffected.
+- **Drawer focus trap** — the mobile drawer is a true `role="dialog"` with
+  `aria-modal`. Tab and Shift+Tab stay inside it, and focus returns to the
+  trigger on close. Previously, tabbing escaped to content behind the scrim.
 
 New module: `frontend/src/lib/use-focus-trap.ts`.
 
-**Verified:** ten consecutive Tab presses keep focus inside the drawer; Escape
-closes it and restores focus.
+**Verified:** ten consecutive Tab presses keep focus inside the drawer.
 
-### 9. Optimistic UI — *deferred, with reasoning*
+---
 
-Every change round-trips to the API before the UI updates. On a fast connection
-this is imperceptible; on a slow one, controls feel unresponsive.
+### Part B — Defects identified, not yet fixed
 
-**Not implemented, deliberately.** Applying changes locally and reconciling on
-response is only an improvement if rollback is handled properly — a half-built
-optimistic layer that silently diverges from the database is worse than the
-current behaviour, which is correct if not the fastest. The re-fetch approach
-also guarantees the list and board never disagree, which is why it was chosen
-originally.
+#### D1. Undo does not restore subtasks or comments — *high*
 
-### 10. Backend hardening for production — *partially deferred*
+Deleting a task cascade-deletes its subtasks, comments and activity server-side
+(`backend/src/tasks/tasks.service.ts:171`). The undo introduced in A5 recreates
+only the parent task, so **its children are permanently lost** even though the
+UI implies a full restore.
 
-Not required for an assessment, recorded for completeness:
+**Suggested:** either have undo call a dedicated restore endpoint that
+soft-deletes and revives the whole subtree, or narrow the toast's wording to
+state that only the task is restored. The current behaviour promises more than
+it delivers, which is worse than offering no undo at all.
 
-- **No rate limiting.** `POST /api/auth/guest` writes a user document per call
-  and is unauthenticated, making it trivially spammable on a public URL.
-  `@nestjs/throttler` would close this. **Recommended before sharing the
-  deployed link widely.**
-- **No security headers.** Adding `helmet` is a one-line change.
-- **Pagination exists but is unused by the UI.** `PaginationDto` supports
-  `skip`/`take` capped at 100, but the frontend never paginates, so a board past
-  100 tasks would silently truncate.
+#### D2. "Delete all" in a board column has no undo and is not atomic — *high*
+
+The column header menu offers "Delete all (N)", which loops over tasks firing a
+separate `DELETE` per card. Nothing confirms, nothing undoes, and a failure
+halfway leaves the column partially deleted with no indication of which
+succeeded.
+
+**Suggested:** a bulk endpoint (`DELETE /tasks?ids=…`) that deletes in one
+operation, with the same undo affordance as single deletes.
+
+#### D3. No optimistic-concurrency control — *medium*
+
+Two people editing the same task both `PATCH` it, and the last write silently
+wins — the first person's change disappears with no warning. `updatedAt` is
+already returned by the API but never checked on write.
+
+**Suggested:** accept an `If-Unmodified-Since` or version field and return `409
+Conflict` on mismatch. Worth doing only if multi-user editing is a real scenario
+for this product.
+
+---
+
+### Part C — UX gaps identified
+
+#### U1. Errors offer no way to recover — *medium*
+
+When a fetch fails, the view renders the message as static text. There is no
+retry button, so the only recovery is a full page reload.
+
+**Suggested:** a "Try again" button calling the existing `reload()` — the hook
+already exposes it, so this is a small change with a real payoff on flaky
+connections.
+
+#### U2. Empty states are a bare sentence — *medium*
+
+An empty board shows only "No tasks yet." — no illustration, no explanation, and
+no call to action, on what is a new user's very first screen.
+
+**Suggested:** pair the message with a primary "Add your first task" button. The
+filtered variant ("No tasks match your filters") should offer "Clear filters"
+for the same reason.
+
+#### U3. View mode and filters do not survive a reload — *medium*
+
+Switching to Board, applying filters, and toggling columns are all component
+state. A refresh — or following a link and returning — resets everything to
+defaults.
+
+**Suggested:** persist view mode and field visibility to `localStorage`, and
+reflect search and filters in the URL query string. The latter also makes a
+filtered view shareable, which is a common expectation in this kind of tool.
+
+#### U4. No custom 404 or error boundary — *medium*
+
+Navigating to a non-existent task shows Next.js's default not-found page, which
+carries none of the app's design. An uncaught render error shows the framework
+error overlay in development and a blank page in production.
+
+**Suggested:** add `app/not-found.tsx` and `app/error.tsx` using the app's own
+shell, the latter with a reset button.
+
+#### U5. Task titles have no length feedback — *low*
+
+The API rejects titles over 200 characters, but no input enforces or signals the
+limit. A long title is accepted by the field and then rejected on save, which
+now surfaces as a failure toast rather than an explanation.
+
+**Suggested:** `maxLength` on the inputs plus a counter as the limit approaches.
+
+---
+
+### Part D — Polish and hardening
+
+#### P1. Optimistic UI — *deferred, with reasoning*
+
+Every change round-trips before the UI updates. On a fast connection this is
+imperceptible; on a slow one, controls feel unresponsive.
+
+**Not implemented, deliberately.** Optimistic updates are only an improvement
+with proper rollback — a half-built layer that silently diverges from the
+database is worse than the current behaviour, which is correct if not the
+fastest. The re-fetch approach also guarantees the list and board never disagree.
+
+#### P2. Board columns do not scroll independently — *low*
+
+Each column grows with its content, so one long column stretches the whole board
+and pushes the others' "Add Task" far down the page.
+
+**Suggested:** a `max-height` with per-column overflow, keeping every column's
+add affordance reachable.
+
+#### H1. No rate limiting on guest login — *high*
+
+`POST /api/auth/guest` writes a user document per call and is unauthenticated.
+On a public URL this is trivially abusable.
+
+**This is already measurable:** the development database currently holds **80
+users, of which 70 are guests** — 88%, accumulated from testing alone. A free
+M0 cluster would fill quickly under any real traffic.
+
+**Suggested:** `@nestjs/throttler` on the auth routes, plus a scheduled job
+pruning guest accounts older than a set age. Neither exists today, so guest
+records accumulate indefinitely.
+
+#### H2. Missing security headers and unused pagination — *medium*
+
+- **No `helmet`** — a one-line addition supplying standard security headers.
+- **Pagination exists but is unused.** `PaginationDto` supports `skip`/`take`
+  capped at 100, but the frontend never paginates, so a board past 100 tasks
+  would silently truncate with no indication that rows are missing.
 
 ---
 
 ### Summary
 
-| # | Improvement | Status |
-|---|---|---|
-| 1 | Comments heading mislabelled | Implemented |
-| 2 | Board drag-and-drop + keyboard equivalent | Implemented |
-| 3 | All seven filter axes functional | Implemented |
-| 4 | Duplicate "Members" label | Implemented |
-| 5 | Undo on delete | Implemented |
-| 6 | Mutation failures surfaced | Implemented |
-| 7 | Loading skeletons | Implemented |
-| 8 | Focus rings + drawer focus trap | Implemented |
-| 9 | Optimistic UI | Deferred — needs proper rollback |
-| 10 | Rate limiting, helmet, pagination | Deferred — pre-deployment hardening |
+| # | Improvement | Severity | Status |
+|---|---|---|---|
+| A1 | Comments heading mislabelled | Defect | ✅ Implemented |
+| A2 | Board drag-and-drop + keyboard equivalent | UX gap | ✅ Implemented |
+| A3 | All seven filter axes functional | UX gap | ✅ Implemented |
+| A4 | Duplicate "Members" label | UX gap | ✅ Implemented |
+| A5 | Undo on delete | UX gap | ✅ Implemented |
+| A6 | Mutation failures surfaced | UX gap | ✅ Implemented |
+| A7 | Loading skeletons | Polish | ✅ Implemented |
+| A8 | Focus rings + drawer focus trap | Polish | ✅ Implemented |
+| D1 | Undo loses subtasks and comments | Defect | ⚠️ Open — high |
+| D2 | Bulk delete: no undo, not atomic | Defect | ⚠️ Open — high |
+| D3 | No optimistic-concurrency control | Defect | ○ Open — medium |
+| U1 | Errors offer no retry | UX gap | ○ Open — medium |
+| U2 | Empty states lack a call to action | UX gap | ○ Open — medium |
+| U3 | View and filters lost on reload | UX gap | ○ Open — medium |
+| U4 | No custom 404 or error boundary | UX gap | ○ Open — medium |
+| U5 | No title length feedback | UX gap | ○ Open — low |
+| P1 | Optimistic UI | Polish | ○ Deferred — needs rollback |
+| P2 | Board columns do not scroll | Polish | ○ Open — low |
+| H1 | No rate limiting on guest login | Hardening | ⚠️ Open — high |
+| H2 | No helmet; pagination unused | Hardening | ○ Open — medium |
 
 All implemented work was verified against the running application: the existing
-interaction suite still passes **21/21**, a dedicated feature suite passes
-**22/22**, and the responsive audit is clean across **ten widths from 320px to
-1920px** — with zero console errors throughout.
+interaction suite passes **21/21**, a dedicated feature suite passes **22/22**,
+and the responsive audit is clean across **ten widths from 320px to 1920px** —
+with zero console errors throughout.
+
+> **Priority if this were continuing:** D1 and D2 first, since both silently
+> destroy user data, then H1 before the deployed link circulates widely.
 
 ---
 
