@@ -41,9 +41,13 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const port = config.get<number>('PORT', 4000);
-  await app.listen(port);
+  // Bind to all interfaces: hosted platforms (Render, Railway, Fly) route
+  // traffic in from outside the container, and the default localhost-only
+  // binding makes the service unreachable — health checks fail and the deploy
+  // is rolled back as unhealthy.
+  await app.listen(port, '0.0.0.0');
 
-  Logger.log(`API listening on http://localhost:${port}/api`, 'Bootstrap');
+  Logger.log(`API listening on port ${port}, base path /api`, 'Bootstrap');
 }
 
 void bootstrap();

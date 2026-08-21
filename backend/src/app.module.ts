@@ -24,6 +24,14 @@ import { validateEnv } from './config/env.validation';
         // Fail fast on an unreachable cluster rather than hanging the request
         // that happens to arrive first.
         serverSelectionTimeoutMS: 10000,
+        // A paused/idle Atlas free-tier cluster takes ~20s to accept its first
+        // connection, which is longer than the default 30s socket timeout
+        // leaves room for once TLS and auth are added on top. Retrying writes
+        // covers the primary election that follows a cluster waking up.
+        retryWrites: true,
+        // Keep the pool small: the free tier caps total connections, and a
+        // single web instance never needs the default 100.
+        maxPoolSize: 10,
       }),
     }),
     AuthModule,

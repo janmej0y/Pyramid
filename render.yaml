@@ -1,0 +1,34 @@
+# Render blueprint for the Pyramid API.
+#
+# Deploy by pointing Render at this repository (New -> Blueprint). Secrets are
+# marked sync:false so Render prompts for them instead of storing them here.
+services:
+  - type: web
+    name: pyramid-api
+    runtime: node
+    plan: free
+    # The API lives in a subdirectory; everything below runs relative to it.
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:prod
+    # Hits the liveness probe, which also pings MongoDB — a deploy is only
+    # healthy once the database is actually reachable.
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Atlas connection string, including the database name before "?".
+      - key: DATABASE_URL
+        sync: false
+      # Must be at least 16 characters; boot validation rejects anything less.
+      # Generate with:
+      #   node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # Comma-separated allowed browser origins. Set this to the deployed
+      # Vercel URL once the frontend exists — a mismatch here surfaces as a
+      # CORS error in the browser, not as a server-side failure.
+      - key: CORS_ORIGIN
+        sync: false
