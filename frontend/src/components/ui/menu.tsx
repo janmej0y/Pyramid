@@ -216,7 +216,7 @@ export function MenuContent({
         visibility: pos ? "visible" : "hidden",
       }}
       className={cn(
-        "fixed z-[100] max-h-[min(70vh,420px)] min-w-[180px] overflow-y-auto rounded-xl",
+        "fixed z-[100] max-h-[min(78vh,560px)] min-w-[180px] overflow-y-auto rounded-xl",
         "border border-[var(--border)] bg-[var(--surface)] p-1 shadow-[var(--shadow-menu)]",
         "origin-top animate-[menu-in_120ms_ease-out]",
         className,
@@ -326,36 +326,99 @@ export function MenuCheckboxItem({
 }
 
 /**
- * Nested flyout (Fields → Priority, Change Theme → Light/Dark). Opens on hover
+ * Nested flyout (Filter → Priority, Change Theme → Light/Dark). Opens on hover
  * and on click so it works for both pointer and touch input.
+ *
+ * The panel is portalled into <body> rather than positioned `absolute
+ * left-full`: the parent menu scrolls its own overflow, so a flyout anchored
+ * inside it was clipped at the panel edge and pushed the parent into showing
+ * scrollbars. Escaping to the body also lets the flyout flip to the left when
+ * there is no room on the right.
  */
 export function MenuSub({
   label,
   icon,
   children,
   contentClassName,
+  width = 186,
 }: {
   label: string;
   icon?: React.ReactNode;
   children: React.ReactNode;
   contentClassName?: string;
+  width?: number;
 }) {
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{
+    top: number;
+    left: number;
+    maxHeight: number;
+  } | null>(null);
 
   const cancelClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
   };
   const scheduleClose = () => {
     cancelClose();
-    closeTimer.current = setTimeout(() => setOpen(false), 120);
+    closeTimer.current = setTimeout(() => setOpen(false), 160);
   };
 
   useEffect(() => () => cancelClose(), []);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    function place() {
+      const trigger = triggerRef.current;
+      const panel = panelRef.current;
+      if (!trigger || !panel) return;
+
+      const t = trigger.getBoundingClientRect();
+      const p = panel.getBoundingClientRect();
+      const margin = 8;
+      const gap = 4;
+
+      // Prefer opening to the right of the parent row; flip left when that
+      // would run off-screen.
+      let left = t.right + gap;
+      if (left + width > window.innerWidth - margin) {
+        const flipped = t.left - width - gap;
+        left = flipped >= margin ? flipped : Math.max(margin, window.innerWidth - width - margin);
+      }
+
+      // Align to the row, lifting the panel up only as far as needed.
+      const room = Math.max(140, window.innerHeight - margin * 2);
+      const height = Math.min(p.height || 0, room);
+      let top = t.top;
+      if (top + height > window.innerHeight - margin) {
+        top = Math.max(margin, window.innerHeight - height - margin);
+      }
+
+      setPos({ top, left, maxHeight: room });
+    }
+
+    place();
+
+    // Content can arrive after the first paint (option lists), so re-measure
+    // rather than leaving the panel placed for an empty box.
+    const observer = new ResizeObserver(place);
+    if (panelRef.current) observer.observe(panelRef.current);
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, width]);
+
   return (
-    <div className="relative" onMouseEnter={() => { cancelClose(); setOpen(true); }} onMouseLeave={scheduleClose}>
+    <div onMouseEnter={() => { cancelClose(); setOpen(true); }} onMouseLeave={scheduleClose}>
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -370,18 +433,33 @@ export function MenuSub({
         <ChevronRightIcon size={14} className="text-[var(--text-subtle)]" />
       </button>
 
-      {open ? (
-        <div
-          role="menu"
-          className={cn(
-            "absolute left-full top-0 z-50 ml-1 min-w-[170px] rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-[var(--shadow-menu)]",
-            "animate-[menu-in_120ms_ease-out]",
-            contentClassName,
-          )}
-        >
-          {children}
-        </div>
-      ) : null}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={panelRef}
+              role="menu"
+              data-menu-panel
+              onMouseEnter={cancelClose}
+              onMouseLeave={scheduleClose}
+              style={{
+                width,
+                top: pos?.top ?? 0,
+                left: pos?.left ?? 0,
+                maxHeight: pos?.maxHeight,
+                visibility: pos ? "visible" : "hidden",
+              }}
+              className={cn(
+                "fixed z-[110] overflow-y-auto rounded-xl border border-[var(--border)]",
+                "bg-[var(--surface)] p-1 shadow-[var(--shadow-menu)]",
+                "animate-[menu-in_120ms_ease-out]",
+                contentClassName,
+              )}
+            >
+              {children}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
