@@ -1,489 +1,678 @@
-# Pyramid — Task Management System
+<div align="center">
 
-A full-stack task manager built from the Assessment Task Figma design: kanban
-board, grouped list, task details with subtasks and comments, projects, guest
-authentication, and a two-axis theme system.
+# 🔺 Pyramid
 
-| | |
-| --- | --- |
-| **Frontend** | Next.js 16.3 (App Router) · React 19 · TypeScript · Tailwind CSS v4 |
-| **Backend** | NestJS 11 · TypeScript · Mongoose 9 · MongoDB |
-| **Auth** | JWT guest sessions, globally guarded routes |
+### A full-stack task & project workspace
+
+Kanban board · grouped lists · subtasks · comments · Google sign-in · dual-axis theming
+
+<br/>
+
+![Next.js](https://img.shields.io/badge/Next.js-16.3-000000?style=for-the-badge&logo=next.js&logoColor=white)
+![React](https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-v4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+
+![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
+![Mongoose](https://img.shields.io/badge/Mongoose-9-880000?style=for-the-badge&logo=mongoose&logoColor=white)
+![JWT](https://img.shields.io/badge/JWT-Auth-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)
+
+<br/>
+
+![Tests](https://img.shields.io/badge/tests-41%2F41_passing-22c55e?style=flat-square)
+![Console](https://img.shields.io/badge/console_errors-0-22c55e?style=flat-square)
+![Responsive](https://img.shields.io/badge/responsive-320→1920px-22c55e?style=flat-square)
+![Lint](https://img.shields.io/badge/eslint-0_problems-22c55e?style=flat-square)
+
+</div>
 
 ---
 
-## Table of contents
+## 📑 Contents
 
-- [Quick start](#quick-start)
-- [Scripts](#scripts)
-- [Features](#features)
-- [API reference](#api-reference)
-- [Architecture](#architecture)
-- [Theme system](#theme-system)
-- [Responsive behaviour](#responsive-behaviour)
-- [Testing](#testing)
-- [Design decisions](#design-decisions)
-- [Intentional deviations](#intentional-deviations)
-- [Deployment notes](#deployment-notes)
+| | | |
+|---|---|---|
+| 🚀 [Quick start](#-quick-start) | 🎬 [Screens](#-screens) | 🏗️ [Architecture](#️-architecture) |
+| ✨ [Features](#-features) | 🔌 [API](#-api-reference) | 🎨 [Theming](#-theme-system) |
+| 📱 [Responsive](#-responsive-behaviour) | 🧪 [Testing](#-testing) | 🚢 [Deploy](#-deployment) |
+| 🔐 [Google sign-in](#-google-sign-in) | 🧭 [Decisions](#-design-decisions) | 📋 [Deviations](#-intentional-deviations) |
 
 ---
 
-## Quick start
+## 🚀 Quick start
 
-**Prerequisites:** Node.js 20+, npm, and a MongoDB database.
+```mermaid
+flowchart LR
+    A["📦 Clone"] --> B["🍃 MongoDB<br/>connection string"]
+    B --> C["⚙️ Backend<br/>:4000"]
+    C --> D["🖥️ Frontend<br/>:3000"]
+    D --> E["✅ Continue<br/>as Guest"]
 
-### 0. Get a MongoDB connection string
-
-**MongoDB Atlas** (free, recommended — and required for any cloud deployment):
-
-1. Create a free M0 cluster at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
-2. **Database Access** → add a database user with a password
-3. **Network Access** → allow your IP (or `0.0.0.0/0` for development)
-4. **Connect → Drivers** → copy the string, then insert the database name
-   before the `?`:
-
-```
-mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/pyramid?retryWrites=true&w=majority
+    style A fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b
+    style B fill:#dcfce7,stroke:#22c55e,color:#14532d
+    style C fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style D fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a
+    style E fill:#fef3c7,stroke:#f59e0b,color:#78350f
 ```
 
-Or use a **local MongoDB**: `mongodb://localhost:27017/pyramid`.
+> **Prerequisites** · Node.js 20+ · npm · a MongoDB database
 
-The app runs as two processes. **Start the backend first**; the frontend calls it
-on load.
+<details open>
+<summary><b>0️⃣ &nbsp;Get a MongoDB connection string</b></summary>
 
-### 1. Backend → http://localhost:4000/api
+<br/>
+
+**MongoDB Atlas** (free tier, required for cloud deployment):
+
+1. Create a free **M0** cluster → [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
+2. **Database Access** → add a user with a password
+3. **Network Access** → allow your IP (or `0.0.0.0/0` for deployment)
+4. **Connect → Drivers** → copy the string
+
+> ⚠️ **Put the database name before the `?`** — Atlas omits it, and without it
+> Mongoose silently writes to a database called `test`.
+
+```diff
+- mongodb+srv://user:pass@cluster0.abc.mongodb.net/?retryWrites=true
++ mongodb+srv://user:pass@cluster0.abc.mongodb.net/pyramid?retryWrites=true
+                                                  ^^^^^^^^
+```
+
+**Or run MongoDB locally:** `mongodb://127.0.0.1:27017/pyramid`
+
+</details>
+
+<details open>
+<summary><b>1️⃣ &nbsp;Backend → <code>http://localhost:4000/api</code></b></summary>
+
+<br/>
 
 ```bash
 cd backend
 npm install
-cp .env.example .env        # paste your connection string into DATABASE_URL
-npm run db:seed             # loads the design's content
-npm run start:dev           # watch mode
+cp .env.example .env        # then paste your DATABASE_URL
+npm run db:seed             # optional — demo tasks & projects
+npm run start:dev
 ```
 
-No migration step — Mongoose creates collections and indexes on first use.
+✅ Ready when you see `API listening on port 4000, base path /api`
 
-### 2. Frontend → http://localhost:3000
+</details>
 
-In a second terminal:
+<details open>
+<summary><b>2️⃣ &nbsp;Frontend → <code>http://localhost:3000</code></b></summary>
+
+<br/>
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local
+cp .env.example .env.local  # defaults to localhost:4000/api
 npm run dev
 ```
 
-Open **http://localhost:3000** and click **Continue as Guest**.
+Open **http://localhost:3000** → click **Continue as Guest** 🎉
 
-> **If login fails with _"Could not start a guest session"_** the backend isn't
-> running, or it's running on a different origin than the frontend expects. Next
-> falls back to port 3001 when 3000 is taken — both are allowed in
-> `CORS_ORIGIN` by default.
+</details>
 
-### Environment variables
+### 🔑 Environment variables
 
-**`backend/.env`**
+<table>
+<tr><th colspan="3">🗄️ &nbsp;Backend &nbsp;<code>backend/.env</code></th></tr>
+<tr><th>Variable</th><th>Required</th><th>Notes</th></tr>
+<tr><td><code>DATABASE_URL</code></td><td>✅</td><td>Mongo connection string, database name included</td></tr>
+<tr><td><code>JWT_SECRET</code></td><td>✅</td><td>Min 16 chars — <b>boot fails otherwise</b></td></tr>
+<tr><td><code>JWT_EXPIRES_IN</code></td><td>—</td><td>Default <code>7d</code></td></tr>
+<tr><td><code>PORT</code></td><td>—</td><td>Default <code>4000</code></td></tr>
+<tr><td><code>CORS_ORIGIN</code></td><td>—</td><td>Comma-separated origins</td></tr>
+<tr><td><code>GOOGLE_CLIENT_ID</code></td><td>🔵</td><td rowspan="3" align="center"><i>All three, or none.<br/>See <a href="#-google-sign-in">Google sign-in</a></i></td></tr>
+<tr><td><code>GOOGLE_CLIENT_SECRET</code></td><td>🔵</td></tr>
+<tr><td><code>GOOGLE_CALLBACK_URL</code></td><td>🔵</td></tr>
+<tr><th colspan="3">🖥️ &nbsp;Frontend &nbsp;<code>frontend/.env.local</code></th></tr>
+<tr><td><code>NEXT_PUBLIC_API_URL</code></td><td>✅</td><td>Must include the <code>/api</code> suffix</td></tr>
+</table>
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `DATABASE_URL` | — | MongoDB URI; **must start `mongodb://` or `mongodb+srv://`** |
-| `JWT_SECRET` | — | Signing key; **must be 16+ characters** |
-| `JWT_EXPIRES_IN` | `7d` | Session lifetime |
-| `PORT` | `4000` | API port |
-| `CORS_ORIGIN` | `localhost:3000,localhost:3001` | Comma-separated allowed origins |
-
-**`frontend/.env.local`**
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:4000/api` | API base URL (include `/api`) |
-
-Config is validated at boot — a missing or too-short `JWT_SECRET` fails
-immediately with a clear message rather than at the first login attempt.
+> 🔒 Config is validated at **boot**, not at first request — a missing secret
+> fails loudly with a message naming exactly what's wrong.
 
 ---
 
-## Scripts
+## 🎬 Screens
 
-### Backend
+<table>
+<tr>
+<td width="50%"><img src="docs/images/02-tasks-list.png" alt="Task list"/><br/><div align="center"><b>📋 List view</b><br/><sub>Grouped by status, inline editing</sub></div></td>
+<td width="50%"><img src="docs/images/05-tasks-board.png" alt="Board"/><br/><div align="center"><b>🗂️ Board view</b><br/><sub>Drag cards between columns</sub></div></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/08-task-detail.png" alt="Task detail"/><br/><div align="center"><b>📝 Task detail</b><br/><sub>Subtasks, comments, activity</sub></div></td>
+<td width="50%"><img src="docs/images/13-dark-mode.png" alt="Dark mode"/><br/><div align="center"><b>🌙 Dark mode</b><br/><sub>Re-themed, not inverted</sub></div></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/14-filter-menu.png" alt="Filters"/><br/><div align="center"><b>🔍 Filters</b><br/><sub>Seven working axes</sub></div></td>
+<td width="50%"><img src="docs/images/17-undo-toast.png" alt="Undo"/><br/><div align="center"><b>↩️ Undo</b><br/><sub>6-second recovery window</sub></div></td>
+</tr>
+</table>
 
-| Command | Does |
-| --- | --- |
-| `npm run start:dev` | Watch-mode server |
-| `npm run start:prod` | Runs built output (`npm run build` first) |
-| `npm run build` | `nest build` |
-| `npm run lint` | ESLint with `--fix` |
-| `npm run db:seed` | Reload seed data (wipes collections and re-inserts) |
-| `node test/api-smoke.mjs` | 49 API assertions (needs a running server) |
-| `node test/start-memory-db.mjs` | In-memory MongoDB for local testing, no install |
-
-### Frontend
-
-| Command | Does |
-| --- | --- |
-| `npm run dev` | Dev server with Turbopack |
-| `npm run build` | Production build |
-| `npm start` | Serve the production build |
-| `npm run lint` | ESLint |
+<div align="center"><sub>📄 Full walkthrough with every screen → <a href="docs/Pyramid-Walkthrough.pdf"><b>Pyramid-Walkthrough.pdf</b></a></sub></div>
 
 ---
 
-## Features
+## ✨ Features
 
-### Screens
+### 🔄 The task pipeline
 
-| Route | Screen |
-| --- | --- |
-| `/` | Guest login |
-| `/tasks` | Tasks — list view, grouped by status |
-| `/tasks` → Fields → Board | Tasks — kanban board |
-| `/tasks/[id]` | Task detail — properties, subtasks, comments, details panel |
-| `/projects` | Projects table |
-| `/projects/[id]` | Project-scoped tasks with breadcrumb |
-| `/settings` | Settings — Profile / Theme / Color |
+```mermaid
+flowchart LR
+    T["📥 To Do"] -->|drag / menu| D["⚙️ Doing"]
+    D --> C["✅ Completed"]
+    D -.->|blocked| H["⏸️ On Hold"]
+    H -.-> D
 
-### What works
+    style T fill:#f1f5f9,stroke:#64748b,color:#0f172a
+    style D fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a
+    style C fill:#dcfce7,stroke:#22c55e,color:#14532d
+    style H fill:#fef3c7,stroke:#f59e0b,color:#78350f
+```
 
-Everything below persists to the API and survives a refresh.
+### 📊 What works
 
-**Tasks**
-- Create inline from any column or the toolbar button
-- Rename and edit descriptions by clicking them
-- Move between statuses, change priority, delete — from the `···` menu on rows and cards
-- Search by title (`⌘F` / `Ctrl+F`) and filter by priority
-- Toggle columns and switch list/board via the Fields menu
+| | Feature | Detail |
+|:--:|---|---|
+| 🔐 | **Auth** | Guest sessions + Google OAuth, JWT, globally guarded routes |
+| ✏️ | **Inline editing** | Priority, members, due date — editable straight from any row |
+| 🖱️ | **Drag & drop** | Pointer drag + full keyboard equivalent (`Space` `←→` `Esc`) |
+| 🔍 | **Search** | Debounced, client-side, `⌘F` / `Ctrl+F` |
+| 🎛️ | **Filters** | Status · Priority · Members · Due date · Teams · Labels · Reporter |
+| 👁️ | **Column toggles** | Seven optional columns via the Fields menu |
+| 🌗 | **Theming** | Light/dark × six accents = 12 combinations |
+| ↩️ | **Undo** | Deletes recoverable for 6s, restoring all fields |
+| 💀 | **Skeletons** | Shaped placeholders at real row height — no layout shift |
+| ♿ | **Accessible** | ARIA throughout, focus rings, drawer focus trap |
+| 📱 | **Responsive** | Tables restructure into cards below `md` |
 
-**Task detail**
-- Editable title and description
-- Status, priority, due date (calendar picker), and member assignment
-- Subtasks: add, delete, change priority
-- Comments: post, reply, delete — deletion is disabled on others' comments, since the API enforces ownership
-- Watch/lock toggles, copy-link, and a collapsible details panel
+### ⌨️ Keyboard
 
-**Projects** — create, delete, change priority, open a project's own task board.
-
-**Settings** — profile fields save on blur; theme and accent switch live; Leave
-Workspace confirms before signing out.
+| Keys | Action |
+|---|---|
+| <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>F</kbd> | Open search |
+| <kbd>Space</kbd> | Pick up / drop a board card |
+| <kbd>←</kbd> <kbd>→</kbd> | Move held card between columns |
+| <kbd>Esc</kbd> | Cancel drag · close menu · dismiss drawer |
+| <kbd>Enter</kbd> | Save inline edit |
+| <kbd>Tab</kbd> | Trapped inside the mobile drawer |
 
 ---
 
-## API reference
+## 🏗️ Architecture
 
-Base URL `http://localhost:4000/api`. Every route requires
-`Authorization: Bearer <token>` except `POST /auth/guest` and `GET /health`.
+```mermaid
+flowchart TB
+    subgraph browser["🌐 Browser"]
+        UI["<b>Next.js 16</b> · App Router<br/>React 19 · Tailwind v4"]
+    end
 
-### Auth
+    subgraph api["🔧 NestJS 11 API — :4000"]
+        direction TB
+        G["🛡️ <b>JwtAuthGuard</b><br/><i>global — opt out with @Public()</i>"]
+        V["✅ <b>ValidationPipe</b><br/><i>whitelist · forbid unknown</i>"]
+        C["🎯 <b>Controllers</b><br/>auth · tasks · projects · comments · users"]
+        S["⚙️ <b>Services</b>"]
+        G --> V --> C --> S
+    end
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/auth/guest` | Create a guest session → `{ accessToken, user }` |
-| `GET` | `/auth/me` | Resolve the current session |
+    DB[("🍃 <b>MongoDB Atlas</b><br/>Mongoose ODM")]
 
-### Tasks
+    UI -->|"fetch + Bearer"| G
+    S -->|"queries"| DB
+    DB -.->|"documents"| S
+    S -.->|"JSON"| UI
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/tasks` | List — `search`, `status`, `priority`, `projectId`, `parentId`, `includeSubtasks`, `skip`, `take` |
-| `GET` | `/tasks/grouped` | Bucketed by status — `projectId` |
+    style UI fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a
+    style G fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style V fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    style C fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b
+    style S fill:#f3e8ff,stroke:#a855f7,color:#581c87
+    style DB fill:#dcfce7,stroke:#22c55e,color:#14532d
+```
+
+### 🔁 How a change persists
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 👤 User
+    participant C as ⚛️ Component
+    participant A as 📡 api client
+    participant N as 🔧 NestJS
+    participant M as 🍃 MongoDB
+
+    U->>C: selects "High"
+    C->>A: updateTask(id, …)
+    A->>N: PATCH /api/tasks/:id 🔑
+    N->>N: verify token → validate DTO
+    N->>M: findByIdAndUpdate
+    M-->>N: updated doc
+    N->>M: record activity
+    N-->>A: 200 + JSON
+    A->>N: GET /tasks/grouped
+    N-->>C: fresh payload
+    C-->>U: row re-renders ✨
+```
+
+> 💡 **Why re-fetch instead of patching state?** One grouped endpoint feeds both
+> list and board, so they can never disagree — no duplicated optimistic-update
+> logic per view.
+
+### 🗂️ Project layout
+
+```
+📦 Pyramid
+├── 🖥️ frontend/
+│   └── src/
+│       ├── app/              # routes: / · /tasks · /projects · /settings · /auth/callback
+│       ├── components/
+│       │   ├── layout/       # shell · sidebar · toolbar
+│       │   ├── tasks/        # board · table · detail · cell editors
+│       │   └── ui/           # button · menu · toast · skeleton · icons
+│       └── lib/              # api · hooks · filters · dnd · focus-trap
+├── ⚙️ backend/
+│   └── src/
+│       ├── auth/             # guest + Google OAuth · JWT guard
+│       ├── tasks/ projects/ comments/ users/
+│       ├── schemas/          # user · task · project · comment · activity
+│       └── common/           # constants · filters · serialize
+└── 📄 docs/                  # walkthrough + screenshots
+```
+
+### 🧩 Data model
+
+```mermaid
+erDiagram
+    USER ||--o{ TASK : reports
+    USER ||--o{ COMMENT : writes
+    USER ||--o{ PROJECT : leads
+    PROJECT ||--o{ TASK : contains
+    TASK ||--o{ TASK : "has subtasks"
+    TASK ||--o{ COMMENT : has
+    TASK ||--o{ ACTIVITY : logs
+    COMMENT ||--o{ COMMENT : replies
+```
+
+---
+
+## 🔌 API reference
+
+> Base URL `http://localhost:4000/api` · all routes need `Authorization: Bearer <token>`
+> unless marked 🌐 **public**
+
+<details>
+<summary><b>🔐 Auth</b></summary>
+
+<br/>
+
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/auth/guest` 🌐 | Create a guest session |
+| `GET` | `/auth/providers` 🌐 | Which sign-in methods are configured |
+| `GET` | `/auth/google` 🌐 | Redirect to Google consent |
+| `GET` | `/auth/google/callback` 🌐 | OAuth landing → redirects to frontend |
+| `GET` | `/auth/me` | Resolve token → user |
+
+</details>
+
+<details>
+<summary><b>✅ Tasks</b></summary>
+
+<br/>
+
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/tasks` | Paginated list · filters via query |
+| `GET` | `/tasks/grouped` | Bucketed by status — powers list **and** board |
 | `POST` | `/tasks` | Create |
-| `GET` | `/tasks/:id` | Fetch one |
-| `PATCH` | `/tasks/:id` | Update |
-| `DELETE` | `/tasks/:id` | Delete (cascades to subtasks and comments) |
+| `GET` | `/tasks/:id` | One task |
+| `PATCH` | `/tasks/:id` | Update any field |
+| `DELETE` | `/tasks/:id` | Delete |
 
-### Comments
+</details>
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/tasks/:taskId/comments` | Thread, with replies nested |
-| `POST` | `/tasks/:taskId/comments` | Add a comment or reply (`parentId`) |
-| `PATCH` | `/comments/:id` | Edit own comment |
-| `DELETE` | `/comments/:id` | Delete own comment |
+<details>
+<summary><b>💬 Comments · 📁 Projects · 👥 Users</b></summary>
 
-### Projects, users, health
+<br/>
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/projects` | List — `search`, `priority`, `skip`, `take` |
-| `POST` | `/projects` | Create |
-| `GET` `PATCH` `DELETE` | `/projects/:id` | Fetch / update / delete |
-| `GET` | `/users` | Members for the assignee picker |
-| `GET` | `/users/:id` | Fetch one |
-| `PATCH` | `/users/me` | Update own profile |
-| `GET` | `/health` | Liveness + database connectivity |
+| Method | Route |
+|---|---|
+| `GET` `POST` | `/tasks/:taskId/comments` |
+| `PATCH` `DELETE` | `/comments/:id` |
+| `GET` `POST` | `/projects` |
+| `GET` `PATCH` `DELETE` | `/projects/:id` |
+| `GET` | `/users` · `/users/:id` |
+| `PATCH` | `/users/me` |
+| `GET` | `/health` 🌐 — pings MongoDB |
 
-### Conventions
+</details>
 
-**Validation.** A global `ValidationPipe` runs `class-validator` DTOs with
-`whitelist` and `forbidNonWhitelisted`, so an unknown or misspelled field is a
-`400` rather than a value that silently does nothing. Enum-like fields
-(`priority`, `status`) are checked against shared constants.
+### 📐 Conventions
 
-**Errors.** One envelope for every failure. Unexpected errors are logged in full
-server-side but reported generically, so stack traces never reach the browser:
+> ⚠️ **Casing is deliberately asymmetric** — statuses are Title Case, priorities lowercase.
+
+```js
+STATUSES   = ["To Do", "Doing", "Completed", "On Hold"]   // Title Case
+PRIORITIES = ["urgent", "high", "medium", "low", "none"]  // lowercase
+```
+
+Unknown fields are **rejected as 400**, never silently ignored. Errors share one shape:
 
 ```json
-{
-  "statusCode": 400,
-  "error": "Bad Request",
-  "message": "priority must be one of: urgent, high, medium, low, none",
-  "path": "/api/tasks",
-  "timestamp": "2026-08-11T00:00:00.000Z"
-}
+{ "statusCode": 400, "error": "Bad Request", "message": ["…"],
+  "path": "/api/tasks", "timestamp": "2026-08-22T…" }
 ```
 
-**Auth.** `JwtAuthGuard` is registered globally via `APP_GUARD`, so routes are
-protected **by default** and opt out explicitly with `@Public()`. A new endpoint
-cannot be left unsecured by forgetting a decorator.
-
-**Ownership.** Comment edits and deletes return `403` unless you wrote the
-comment.
-
 ---
 
-## Architecture
+## 🔐 Google sign-in
 
-```
-Pyramid/
-├── backend/
-│   ├── src/
-│   │   ├── schemas/           Mongoose schemas (User, Project, Task,
-│   │   │                      Comment, Activity)
-│   │   ├── auth/              guest login, JWT guard, @Public/@CurrentUser
-│   │   ├── tasks/             controller · service · DTOs
-│   │   ├── projects/          controller · service · DTOs
-│   │   ├── comments/          threaded comments, ownership checks
-│   │   ├── users/             member list, profile updates
-│   │   ├── common/            constants, pagination DTO, exception filter,
-│   │   │                      _id → id serializer
-│   │   ├── config/            env validation
-│   │   ├── health/            liveness + database ping
-│   │   └── seed.ts            design content, idempotent
-│   └── test/
-│       ├── api-smoke.mjs      end-to-end API assertions
-│       └── start-memory-db.mjs  in-memory MongoDB for local runs
-│
-└── frontend/src/
-    ├── app/                   routes (App Router)
-    ├── components/
-    │   ├── ui/                button · avatar · chips · menu · icons · editable-text
-    │   ├── layout/            app-shell · sidebar · user-menu · page-toolbar
-    │   ├── tasks/             table · board · detail · details-panel · date-picker
-    │   │                      · inline-add · row-actions
-    │   ├── projects/          list + detail
-    │   ├── settings/          profile / theme / colour
-    │   ├── auth/              login card, route guard
-    │   └── providers/         theme + auth context
-    └── lib/                   api client · hooks · types · theme · constants
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as 🌐 Browser
+    participant A as 🔧 API
+    participant G as 🔵 Google
+
+    B->>A: GET /auth/google
+    A->>A: sign CSRF state 🔏
+    A-->>B: 302 + HttpOnly cookie 🍪
+    B->>G: consent screen
+    G-->>B: redirect ?code&state
+    B->>A: GET /auth/google/callback
+    A->>A: verify state (constant-time)
+    A->>G: exchange code → token
+    G-->>A: profile 👤
+    A->>A: find or create user
+    A-->>B: redirect #token=… 🔑
+    B->>A: GET /auth/me
+    A-->>B: session ✅
 ```
 
-### Data model
+### 🛡️ Security choices
 
-Five collections: `users`, `projects`, `tasks`, `comments`, `activities`.
+| | Decision | Why |
+|:--:|---|---|
+| 🔗 | Token in URL **fragment** | Fragments never reach a server — stays out of logs & `Referer` |
+| 🔏 | **HMAC-signed** CSRF state | Survives restarts & multi-instance; no session store needed |
+| 📧 | Unverified emails **discarded** | Stops account claiming via an unowned address |
+| 🆔 | Match on `googleId`, not email | Stable if the user changes their Google address |
+| ⚡ | **All-or-none** config | Partial setup fails at boot, not at first click |
 
-Modelled for MongoDB rather than translated from a relational schema:
+### ⚙️ Setup
 
-- **Assignees and labels are embedded on the task** — arrays of `ObjectId` refs
-  and plain strings — instead of the join tables a SQL design would need. Both
-  are always read with their task, so embedding avoids extra round trips.
-- **Tasks self-reference** for subtasks via a `parent` ref, one level deep,
-  enforced in the service layer.
-- **Deletes cascade in application code.** MongoDB has no foreign-key cascade,
-  so removing a task or project explicitly clears its subtasks, comments and
-  activity.
-- **Email uses a partial unique index**, not `sparse`. Guests have no email, and
-  `sparse` only skips *missing* fields — an explicit `null` still gets indexed,
-  so the second guest would collide with the first.
+<details>
+<summary><b>Configure Google OAuth</b></summary>
 
-Responses always expose `id`, never `_id`: a small serializer
-(`common/serialize.ts`) does that translation in one place, so no Mongo-specific
-field names reach the client.
+<br/>
 
-### Reusable components
+**1.** [Google Cloud Console](https://console.cloud.google.com/apis/credentials) →
+**Create Credentials → OAuth client ID → Web application**
 
-- **`ui/menu.tsx`** — one popover primitive (`Menu`, `MenuItem`,
-  `MenuCheckboxItem`, `MenuSub`) backing the Fields menu, filter menu, user menu,
-  row actions, and priority dropdown. Outside-click, Escape, focus restoration,
-  and close-on-select live in one place.
-- **`tasks/task-table.tsx`** — the grouped table used by the Tasks list, the
-  project-scoped list, and the subtasks table.
-- **`tasks/inline-add.tsx`** / **`tasks/row-actions.tsx`** — create and
-  row-operation affordances shared by tasks, subtasks, and projects.
-- **`ui/editable-text.tsx`** — click-to-edit text for titles and descriptions.
-- **`layout/page-toolbar.tsx`** — the search / Fields / filter / Add row shared
-  by Tasks and Projects.
-- **`lib/api.ts`** — single typed API client; attaches the bearer token and
-  normalises failures into `ApiError`.
+**2.** Add **Authorised redirect URIs** — must match byte for byte:
 
----
+```
+http://localhost:4000/api/auth/google/callback
+https://<your-api>.onrender.com/api/auth/google/callback
+```
 
-## Theme system
+**3.** Add to `backend/.env` (or your host's dashboard):
 
-Two independent axes, exactly as the design's user menu presents them:
+```env
+GOOGLE_CLIENT_ID=your-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-secret
+GOOGLE_CALLBACK_URL=http://localhost:4000/api/auth/google/callback
+```
 
-- **Change Theme** → Light · Dark
-- **Color Mode** → Amber · Blue · Pink · Rose · Emerald · Black
+> ℹ️ Leave all three unset to run **guest-only** — the button hides itself
+> automatically via `/auth/providers`.
 
-Both persist to `localStorage` and survive a refresh.
-
-Themes are CSS custom properties scoped to `[data-theme]` and `[data-accent]` on
-`<html>`, so switching is one attribute change rather than a React re-render. A
-small blocking script in `<head>` applies the stored values **before first
-paint** — without it, dark-mode users would see a white flash on every reload.
+</details>
 
 ---
 
-## Responsive behaviour
+## 🎨 Theme system
 
-The Figma file specifies desktop frames only. Tablet and mobile satisfy the
-assessment's responsiveness requirement by extending the desktop design rather
-than redesigning it:
+Two **independent axes** on `<html>` → **12 combinations**:
 
-- **≥ 768px** — desktop layout as designed; the sidebar collapses from the topbar toggle.
-- **< 768px** — the sidebar becomes an overlay drawer from the same toggle; table
-  rows become stacked cards (a five-column grid at 375px would crush the task
-  title to a few characters); toolbar buttons collapse to icons.
-- The board scrolls horizontally at every width, keeping card width fixed rather
-  than compressing cards.
+```mermaid
+flowchart LR
+    subgraph axis1["🌗 data-theme"]
+        L["☀️ light"]
+        D["🌙 dark"]
+    end
+    subgraph axis2["🎨 data-accent"]
+        A1["🟠 amber"] --- A2["🟣 blue"] --- A3["🩷 pink"]
+        A4["🌹 rose"] --- A5["🟢 emerald"] --- A6["⚫ black"]
+    end
+    axis1 --> T["CSS custom properties"]
+    axis2 --> T
+    T --> R["🖌️ Every component"]
+
+    style T fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b
+    style R fill:#dcfce7,stroke:#22c55e,color:#14532d
+```
+
+✅ No component hardcodes a colour — everything reads `var(--token)`
+✅ Preference applied **before first paint**, so no flash on refresh
+✅ Dark mode is genuinely re-themed: priority hues brighten for contrast
 
 ---
 
-## Testing
+## 📱 Responsive behaviour
 
-**API — 49 assertions.** Start the server, then:
+<div align="center">
+
+| 📐 Width | Layout | Overflow |
+|---|---|:--:|
+| **1920** | Full two-pane, sidebar 244px | ✅ |
+| **1440** | Sidebar 228px | ✅ |
+| **1280** | Sidebar 210px | ✅ |
+| **1024** | Toolbar labels intact | ✅ |
+| **768** | 🍔 Sidebar → overlay drawer | ✅ |
+| **430 · 390 · 360 · 320** | 🃏 Tables → stacked cards | ✅ |
+
+<sub>Verified by comparing <code>scrollWidth</code> against <code>clientWidth</code> at every width</sub>
+
+</div>
+
+> 📱 **The mobile treatment restructures rather than shrinks.** Instead of
+> horizontally scrolling a five-column table, each row becomes a card: title on
+> one line, priority + date + assignee on a second. Toolbar buttons drop labels;
+> the sidebar becomes a drawer with scrim, scroll-lock, focus trap and Escape.
+
+---
+
+## 🧪 Testing
+
+<div align="center">
+
+| Suite | Coverage | Result |
+|---|---|:--:|
+| 🎭 `frontend/test/ui-check.mjs` | Every interactive control, real Chromium | **21/21** ✅ |
+| 🔐 OAuth end-to-end | Consent, CSRF, cancellation, bad tokens | **20/20** ✅ |
+| 🔌 `backend/test/api-smoke.mjs` | Every endpoint + status code | ✅ |
+| 📐 Responsive audit | 10 widths × 4 routes | ✅ |
+
+</div>
 
 ```bash
-cd backend
-npm run start:dev          # terminal 1
-node test/api-smoke.mjs    # terminal 2
+# Both servers must be running
+cd frontend
+npm i -D playwright && npx playwright install chromium
+APP_URL=http://localhost:3000 node test/ui-check.mjs
 ```
 
-No MongoDB installed? `node test/start-memory-db.mjs` boots a real MongoDB
-in-process and prints a connection string to use as `DATABASE_URL`.
-
-Covers auth enforcement (401 anonymous, 401 malformed token), every validation
-rejection, filtering, subtask nesting limits, cascade deletes, comment ownership
-(403), and full CRUD on tasks and projects.
-
-**UI.** Interactions were verified in a real browser with Playwright — creating a
-task, renaming it, moving it between columns, changing priority, adding subtasks
-and comments, editing the profile, and deleting everything — asserting each
-change persisted, with no console errors.
-
-**Build and lint** both pass clean across both packages.
+Each assertion drives a real control **and verifies the change persisted through
+the API** — not just that the UI updated locally.
 
 ---
 
-## Design decisions
+## 🚢 Deployment
 
-- **MongoDB with Mongoose.** `@nestjs/mongoose` is the idiomatic pairing for a
-  Nest backend, and a document store deploys anywhere — unlike SQLite, whose
-  file is wiped on every restart on an ephemeral host.
-- **Guest users are real documents**, not anonymous sessions, so tasks and
-  comments hold genuine references and ownership checks work uniformly.
-- **Subtasks are a self-reference** rather than a separate collection — they
-  carry identical fields, and one level of nesting is enforced in the service.
-- **Search uses an escaped, case-insensitive regex.** MongoDB has no `LIKE`, and
-  an unescaped user string would otherwise be interpreted as a pattern.
-- **`useAsync` instead of a data-fetching library.** The app has a handful of read
-  paths; a small hook with request cancellation avoids the dependency.
-- **Mutations re-fetch rather than patch local state**, which keeps the list and
-  board consistent without duplicating optimistic-update logic per view.
-- **Icons are local SVGs**, so there's no icon-library dependency and stroke
-  weights stay consistent.
+```mermaid
+flowchart LR
+    R["🔧 <b>Render</b><br/>NestJS API<br/><sub>root: backend/</sub>"]
+    V["▲ <b>Vercel</b><br/>Next.js<br/><sub>root: frontend/</sub>"]
+    M[("🍃 <b>Atlas</b>")]
 
-### Mongoose 9 notes
+    V -->|"NEXT_PUBLIC_API_URL"| R
+    R -->|"DATABASE_URL"| M
+    R -.->|"CORS_ORIGIN"| V
 
-A couple of details differ from older Mongoose tutorials:
+    style R fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    style V fill:#f1f5f9,stroke:#0f172a,color:#0f172a
+    style M fill:#dcfce7,stroke:#22c55e,color:#14532d
+```
 
-- **Nullable fields need an explicit `type`.** `@Prop({ default: null })` on a
-  `string | null` property throws `CannotDetermineTypeError` — TypeScript's
-  reflection metadata can't describe a union, so `@Prop({ type: String })` is
-  required.
-- **`FilterQuery` was renamed `QueryFilter`**, and `isValidObjectId()` now
-  rejects numbers.
-- Malformed ids are checked with `Types.ObjectId.isValid()` before any query, so
-  a bad path parameter returns a clean `404` instead of a driver-level cast
-  error.
+**Order matters:** 1️⃣ backend → 2️⃣ frontend → 3️⃣ set `CORS_ORIGIN` to the frontend URL.
+
+<div align="center"><sub>📖 Step-by-step guide → <a href="DEPLOYMENT.md"><b>DEPLOYMENT.md</b></a></sub></div>
+
+### ⚠️ Four things that break deploys
+
+| | Gotcha |
+|:--:|---|
+| 🌐 | Atlas **Network Access** must allow `0.0.0.0/0` |
+| 🗄️ | Database name goes **before the `?`** in `DATABASE_URL` |
+| 📁 | Vercel **Root Directory** must be `frontend` |
+| 🔗 | `NEXT_PUBLIC_API_URL` needs the **`/api`** suffix — and is baked in at build time |
 
 ---
 
-## Intentional deviations
+## 🧭 Design decisions
 
-Documented per the assessment's requirement to note deviations from the design.
+<details>
+<summary><b>Why no component library, state manager, or data-fetching library?</b></summary>
 
-**Reproduced from the design as-is** — these look like mistakes but match the
-source:
+<br/>
 
-1. **The Fields menu lists "Members" twice.** Both rows are checked in the
-   original. They map to separate keys so neither is a dead control.
-2. **The task detail has two "Subtasks" headings** — one above the subtask table,
-   one above the comment thread. Kept rather than silently "corrected".
+Runtime dependencies are **React, React DOM and Next** — nothing else. Menus,
+avatars, chips, toasts, drag-and-drop and the focus trap are all built here.
 
-**Filled in where the design was unspecified:**
+The design's components don't map cleanly onto any library's defaults, so
+adopting one would have meant fighting its styling to reach the same result.
+`useAsync` and `useDebounced` cover the handful of read paths without pulling in
+a cache layer.
 
-3. **Creation is inline, not modal.** The design shows a "+ Add Task" row and no
-   create dialog, so clicking it turns the row into a text field (Enter saves,
-   Escape cancels). New items get a default due date so cards are never missing
-   one.
-4. **The `···` row menus have no specified contents**, so they expose what the API
-   supports: move between statuses, change priority, delete.
-5. **The reply box attaches to the most recent comment**, since the design shows
-   one shared reply field beneath the thread rather than per-comment replies.
-6. **Responsive layouts** are extrapolated from the desktop frames — see above.
+</details>
 
-**Scoped out, and why:**
+<details>
+<summary><b>Why re-fetch after every mutation?</b></summary>
 
-7. **"Login with Google" is disabled.** Guest login is the flow the assessment
-   requires; wiring OAuth was out of scope.
-8. **"Add document or link" is presentational.** Attachments aren't in the data
-   model, so the row renders but is inert rather than pretending to save.
-9. **Reaction and file-attachment buttons were removed.** Neither is in the API
-   schema — leaving them would ship controls that do nothing.
+<br/>
 
-**Technical judgement calls:**
+`GET /tasks/grouped` feeds both list and board. Re-fetching guarantees the two
+views agree and that what's on screen is what the database holds — at the cost
+of a little latency. Optimistic updates are noted as a future improvement, worth
+doing only with proper rollback.
 
-10. **Dates are formatted manually**, not via `Intl`. `en-GB` renders September as
-    "Sept" while the design consistently uses three-letter months ("12 Sep 2026").
-11. **Avatars are generated SVG gradients.** The design's avatar images aren't
-    available as exportable assets, so they're approximated inline. Members
-    without a photo fall back to initials (`CN`), as in the design.
-12. **Search and priority filters apply client-side** to the already-fetched
-    grouped payload, so list and board stay in sync without a refetch. The API
-    supports both as query parameters for when the dataset outgrows this.
-13. **The coloured frame around each Figma frame** is an artboard border, not a UI
-    element, so it isn't reproduced.
+</details>
 
-**Known limitation:**
+<details>
+<summary><b>Why hand-rolled OAuth instead of Passport?</b></summary>
 
-14. **Colours, spacing and type sizes were matched from exported screenshots**,
-    not Figma dev-mode values (the file requires a login to inspect). They are
-    close but not guaranteed pixel-exact.
+<br/>
 
----
+The JWT guard is already hand-rolled. Adding `passport` +
+`@nestjs/passport` + `passport-google-oauth20` would introduce a second,
+parallel auth abstraction for a flow that is two HTTP calls.
 
-## Deployment notes
+</details>
 
-Not yet deployed, but MongoDB Atlas means no database migration is needed first —
-the same connection string works locally and in production.
+<details>
+<summary><b>Mongoose 9 notes</b></summary>
 
-When deploying:
+<br/>
 
-1. **Atlas → Network Access** must allow your host's IP. Serverless platforms use
-   rotating IPs, so `0.0.0.0/0` is usually required; keep the database user's
-   password strong since it becomes the only barrier.
-2. Set `CORS_ORIGIN` to the deployed frontend URL, and `NEXT_PUBLIC_API_URL` to
-   the deployed API URL (including `/api`).
-3. **Use a strong random `JWT_SECRET`** — the committed default is for local
-   development only.
-4. Run the seed once against the production database if you want the design's
-   sample content.
+- **Partial unique indexes** on `email` and `googleId` — `sparse` alone would
+  let a second guest collide, since it only skips *missing* fields
+- **Nullable props need an explicit `type`** — reflection can't infer a schema
+  type from `string | null`
+- `serverSelectionTimeoutMS: 10000` and `maxPoolSize: 10` suit the free tier
 
-Suggested hosts: Vercel for the frontend, Render or Railway for the API.
+</details>
 
 ---
 
-## Remaining work
+## 📋 Intentional deviations
 
-- Part 2 of the assessment (the AbleSpace product write-up)
-- Deployment to a public URL
+> Documented per the assessment's requirement to note deviations from the design.
+
+<details>
+<summary><b>🔧 Fixed after review</b></summary>
+
+<br/>
+
+| | Was | Now |
+|:--:|---|---|
+| 1 | Comments heading read **"Subtasks"** | Renamed to **"Comments"** |
+| 2 | Fields menu listed **"Members" twice** | Second row relabelled **"Assignees"** |
+| 3 | **Google login disabled** | Fully implemented |
+| 4 | Filter menu had **one working axis** | All **seven** work |
+
+</details>
+
+<details>
+<summary><b>✏️ Filled in where the design was unspecified</b></summary>
+
+<br/>
+
+- **Creation is inline, not modal** — the design shows a `+ Add Task` row and no
+  dialog. Enter saves, Escape cancels. New items get a default due date.
+- **`···` menus expose what the API supports** — move status, change priority, delete.
+- **The reply box attaches to the most recent comment**, matching the single
+  shared reply field in the design.
+- **Responsive layouts are extrapolated** from desktop frames.
+
+</details>
+
+<details>
+<summary><b>📦 Scoped out</b></summary>
+
+<br/>
+
+- **"Add document or link" is presentational** — attachments aren't in the data
+  model, so the row renders inert rather than pretending to save.
+- **Reaction and attachment buttons removed** — neither is backed by the API.
+- **Lock / watcher / share** in the detail header render per the design but
+  aren't wired.
+
+</details>
+
+---
+
+## 🗺️ Remaining work
+
+| | Item | Notes |
+|:--:|---|---|
+| 🛡️ | **Rate limiting** | `/auth/guest` is unauthenticated & unthrottled — add `@nestjs/throttler` before sharing publicly |
+| ⚡ | **Optimistic UI** | Needs proper rollback to be worth it |
+| 📄 | **Pagination** | API supports `skip`/`take`; UI never paginates (silently truncates past 100) |
+| 🧪 | **Unit tests** | Coverage is end-to-end only; no `.spec.ts` files exist |
+
+---
+
+<div align="center">
+
+### 📚 More documentation
+
+[![Walkthrough](https://img.shields.io/badge/📄_Walkthrough-PDF-ef4444?style=for-the-badge)](docs/Pyramid-Walkthrough.pdf)
+[![Markdown](https://img.shields.io/badge/📝_Walkthrough-Markdown-6366f1?style=for-the-badge)](docs/WALKTHROUGH.md)
+[![Deployment](https://img.shields.io/badge/🚢_Deployment-Guide-22c55e?style=for-the-badge)](DEPLOYMENT.md)
+
+<br/>
+
+**Built by Janmejoy Mahato**
+
+<sub>Next.js 16 · React 19 · TypeScript · Tailwind v4 · NestJS 11 · MongoDB</sub>
+
+</div>

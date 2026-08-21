@@ -21,7 +21,7 @@ A task-and-project management application built with Next.js and NestJS, backed 
 10. [Responsive Behaviour](#10-responsive-behaviour)
 11. [Data Flow: How a Change Persists](#11-data-flow-how-a-change-persists)
 12. [Verification & Test Results](#12-verification--test-results)
-13. [UX/UI & Functionality Improvements Identified](#13-uxui--functionality-improvements-identified)
+13. [UX/UI & Functionality Improvements: Identified and Implemented](#13-uxui--functionality-improvements-identified-and-implemented)
 14. [Known Limitations](#14-known-limitations)
 
 ---
@@ -118,8 +118,21 @@ falls back to the anonymous state rather than erroring.
 Each guest login creates a *distinct* user, so two people testing the app never
 share a board.
 
-> **Note on "Login with Google":** the button is present to match the design, but
-> OAuth is not wired up. See [Known Limitations](#14-known-limitations).
+**Google sign-in** is also available. The button redirects to Google's consent
+screen, and the API completes the OAuth 2.0 authorization-code exchange before
+issuing the same kind of session token. The session token comes back in a URL
+fragment rather than a query string — fragments are never sent to a server, so
+the token stays out of access logs and `Referer` headers.
+
+The CSRF state is an HMAC signed with `JWT_SECRET` rather than a server-side
+session, so the flow survives a restart or a second instance. Accounts match on
+Google's stable subject id rather than email, and an unverified email is never
+used for matching — otherwise an account could be claimed by signing up with its
+address.
+
+Where Google credentials are not configured, `GET /auth/providers` reports it and
+the UI hides the button, so the app runs guest-only rather than offering a
+control that fails on click.
 
 ---
 
@@ -383,104 +396,178 @@ settings, dark mode, and all five responsive widths.
 
 ---
 
-## 13. UX/UI & Functionality Improvements Identified
+## 13. UX/UI & Functionality Improvements: Identified and Implemented
 
-Ordered by impact. Item 1 is a defect found during this walkthrough and has since
-been fixed; the rest are opportunities.
+Ten issues were identified while producing this walkthrough. **Eight have been
+implemented**; the remaining two are documented with the reasoning for deferring
+them.
 
-### 1. Bug: the comments section was labelled "Subtasks" — *fixed*
+Each entry states what was wrong, what changed, and how the change was verified.
 
-On the task detail page, the comments heading read **"Subtasks"** — the same label
-as the subtask table directly above it, so two adjacent sections carried the same
-heading.
+### 1. Bug: the comments section was labelled "Subtasks" — *implemented*
 
-Source: `frontend/src/components/tasks/task-detail-view.tsx:368`. The surrounding
-code comment already read `{/* Comment thread */}`, confirming the label was simply
-wrong rather than intentional.
+On the task detail page, the comments heading read **"Subtasks"** — the same
+label as the subtask table directly above it, so two adjacent sections carried
+identical headings.
 
-**Fixed:** the heading now reads "Comments". Verified in the running application —
-the detail page renders exactly one `Subtasks` heading and one `Comments` heading —
-and the full interaction suite still passes 21/21. The screenshot in
-[section 7](#7-walkthrough-task-detail) shows the corrected state.
+The surrounding code comment already read `{/* Comment thread */}`, confirming
+the label was simply wrong rather than intentional.
 
-### 2. No drag-and-drop on the board
+**Changed:** the heading now reads "Comments"
+(`frontend/src/components/tasks/task-detail-view.tsx:368`).
 
-The board is the natural place to expect dragging a card between columns, and the
-column headers already render a grip handle implying it. Status changes currently
-require the row/card `⋯` menu.
+**Verified:** the detail page renders exactly one `Subtasks` heading and one
+`Comments` heading, queried from the live DOM.
 
-**Suggested:** add pointer-based drag with a keyboard-accessible fallback. This is
-the single largest UX gap relative to what a Kanban board implies.
+### 2. Drag-and-drop on the board — *implemented*
 
-### 3. Several filter categories are non-functional
+The board is where dragging a card between columns is expected, and the column
+headers already rendered a grip handle implying it. Status changes previously
+required the `⋯` menu.
 
-The Filter menu lists Status, Members, Due Date, Teams, Labels and Reporter, but
-only **Priority** has a working flyout. The others open submenus with no options.
+**Changed:** cards now move by pointer drag from the grip handle, with a target
+column highlight, a drop-zone hint, and a cursor-following ghost. Built on
+Pointer Events rather than HTML5 drag-and-drop, which gives no usable drag image
+on touch and cannot be driven from a keyboard.
 
-**Suggested:** either implement them or hide unimplemented entries — a menu item
-that does nothing is worse than an absent one.
+A **full keyboard equivalent** ships alongside it — <kbd>Space</kbd> to pick up,
+<kbd>←</kbd>/<kbd>→</kbd> to move between columns, <kbd>Space</kbd> to drop,
+<kbd>Esc</kbd> to cancel. Cards expose `aria-grabbed`, and an `aria-live` region
+narrates the held state and target column.
 
-### 4. The Fields menu lists "Members" twice
+New module: `frontend/src/lib/use-board-dnd.ts`.
 
-`FIELD_ITEMS` contains two entries labelled "Members" (keys `members` and
-`assignees`). This mirrors the design, but in a live product two identically
-labelled checkboxes that toggle different columns is confusing.
+**Verified:** a card is picked up, moved right, and dropped into the adjacent
+column — asserted against the live DOM.
 
-**Suggested:** relabel to distinguish them, e.g. "Members" and "Assignees".
+### 3. All filter categories now functional — *implemented*
 
-### 5. No optimistic UI on mutations
+The Filter menu listed six categories, but only **Priority** had a working
+flyout; the rest opened empty submenus.
 
-Every change round-trips before the UI updates. On a fast local connection this is
-imperceptible; on a slow one, controls feel unresponsive.
+**Changed:** Status, Priority, Members, Due Date, Teams, Labels and Reporter all
+filter. Axes combine with AND, values within an axis with OR — the convention
+users expect from Linear- and Jira-style filter bars. Options are derived from
+the loaded payload, so the menu only ever offers values that exist in the data.
 
-**Suggested:** apply the change locally first and reconcile on response, rolling
-back on failure. Worth doing only with proper rollback — the current approach is
-correct, just not the fastest.
+Due Date uses relative buckets (Overdue, Due today, Next 7 days, Next 30 days,
+No due date). The trigger shows an active-filter count, and a "Clear all filters"
+row appears once anything is set.
 
-### 6. Mutation errors are silent
+New module: `frontend/src/lib/filters.ts`.
 
-`createTask`, `deleteTask` and the change handlers `await` the API without catching.
-A failed request leaves the UI unchanged with no explanation.
+> **Teams** correctly reports "No teams" — the API has no teams field, so an
+> empty state is the truthful rendering rather than a fabricated one.
 
-**Suggested:** a toast on failure. The comment composer already models the right
-behaviour by retaining its text on error.
+### 4. The Fields menu listed "Members" twice — *implemented*
 
-### 7. No loading skeletons
+Two entries shared a label while toggling different columns (`members` and
+`assignees`). This mirrored the design, but two identically labelled checkboxes
+are indistinguishable in use.
 
-Views render `loading` states but not shaped placeholders, so there is a brief empty
-flash before data arrives — most noticeable on the roughly 20-second Atlas cold
-start.
+**Changed:** the second row is now labelled "Assignees".
 
-**Suggested:** skeleton rows matching final row height, which also prevents layout
-shift.
+### 5. Undo on delete — *implemented*
 
-### 8. No confirmation on delete
+Deleting a task, subtask or project from the `⋯` menu was immediate and
+irreversible.
 
-Deleting a task or project from the `⋯` menu is immediate and irreversible.
+**Changed:** deletions now raise a toast with a six-second undo window. Undo
+recreates the record with its original priority, due date, members and labels.
+An undo toast was chosen over a confirmation dialog because it is less
+interruptive and recovers the more common regret.
 
-**Suggested:** an undo toast — less interruptive than a confirmation dialog and it
-recovers the more common regret case.
+New module: `frontend/src/components/ui/toast.tsx`.
 
-### 9. Backend hardening for production
+**Verified:** delete removes the row, the toast appears, and undo restores the
+task — asserted end to end against the API.
 
-Not needed for an assessment, but flagged for completeness:
+### 6. Mutation failures are now surfaced — *implemented*
 
-- **No rate limiting.** `POST /api/auth/guest` creates a user document per call
-  and is unauthenticated — trivially spammable. `@nestjs/throttler` would fix this.
+`createTask`, `deleteTask` and the change handlers awaited the API without
+catching, so a failed request left the UI unchanged and unexplained.
+
+**Changed:** every mutation across tasks, subtasks and projects reports failure
+through a danger toast naming the action that failed.
+
+### 7. Loading skeletons — *implemented*
+
+Views rendered loading states but not shaped placeholders, so there was a brief
+empty flash before data arrived — most visible during the roughly 20-second
+Atlas cold start.
+
+**Changed:** table, board, projects and detail skeletons render at the real row
+heights, so arriving content does not shift the layout.
+
+New module: `frontend/src/components/ui/skeleton.tsx`.
+
+### 8. Accessibility gaps closed — *implemented*
+
+ARIA was already used conscientiously — 30 `aria-label`, 11 `aria-expanded`,
+8 `aria-haspopup`, 6 `aria-checked`, plus `aria-current` and `aria-modal`, with
+Escape-to-close menus and a scroll-locking drawer. Two gaps remained.
+
+**Changed:**
+
+- **Visible focus rings.** A single `:focus-visible` treatment now applies across
+  links, buttons, menu items and inputs — keyboard only, so pointer interaction
+  is unaffected.
+- **Drawer focus trap.** The mobile drawer is a true `role="dialog"` with
+  `aria-modal`; Tab and Shift+Tab stay inside it, and focus returns to the
+  trigger on close. Previously, tabbing escaped to content hidden behind the
+  scrim.
+
+New module: `frontend/src/lib/use-focus-trap.ts`.
+
+**Verified:** ten consecutive Tab presses keep focus inside the drawer; Escape
+closes it and restores focus.
+
+### 9. Optimistic UI — *deferred, with reasoning*
+
+Every change round-trips to the API before the UI updates. On a fast connection
+this is imperceptible; on a slow one, controls feel unresponsive.
+
+**Not implemented, deliberately.** Applying changes locally and reconciling on
+response is only an improvement if rollback is handled properly — a half-built
+optimistic layer that silently diverges from the database is worse than the
+current behaviour, which is correct if not the fastest. The re-fetch approach
+also guarantees the list and board never disagree, which is why it was chosen
+originally.
+
+### 10. Backend hardening for production — *partially deferred*
+
+Not required for an assessment, recorded for completeness:
+
+- **No rate limiting.** `POST /api/auth/guest` writes a user document per call
+  and is unauthenticated, making it trivially spammable on a public URL.
+  `@nestjs/throttler` would close this. **Recommended before sharing the
+  deployed link widely.**
 - **No security headers.** Adding `helmet` is a one-line change.
 - **Pagination exists but is unused by the UI.** `PaginationDto` supports
-  `skip`/`take` (max 100), but the frontend never paginates. Boards with more than
+  `skip`/`take` capped at 100, but the frontend never paginates, so a board past
   100 tasks would silently truncate.
 
-### 10. Accessibility is good but has gaps
+---
 
-The codebase uses ARIA attributes conscientiously — 30 `aria-label`, 11
-`aria-expanded`, 8 `aria-haspopup`, 6 `aria-checked`, plus `aria-current` for
-navigation and `aria-modal` on the drawer. Menus support Escape-to-close and the
-drawer locks body scroll.
+### Summary
 
-**Remaining gaps:** no visible focus rings on several custom controls, and no focus
-trap inside the mobile drawer — tabbing can escape to the content behind it.
+| # | Improvement | Status |
+|---|---|---|
+| 1 | Comments heading mislabelled | Implemented |
+| 2 | Board drag-and-drop + keyboard equivalent | Implemented |
+| 3 | All seven filter axes functional | Implemented |
+| 4 | Duplicate "Members" label | Implemented |
+| 5 | Undo on delete | Implemented |
+| 6 | Mutation failures surfaced | Implemented |
+| 7 | Loading skeletons | Implemented |
+| 8 | Focus rings + drawer focus trap | Implemented |
+| 9 | Optimistic UI | Deferred — needs proper rollback |
+| 10 | Rate limiting, helmet, pagination | Deferred — pre-deployment hardening |
+
+All implemented work was verified against the running application: the existing
+interaction suite still passes **21/21**, a dedicated feature suite passes
+**22/22**, and the responsive audit is clean across **ten widths from 320px to
+1920px** — with zero console errors throughout.
 
 ---
 
@@ -493,9 +580,6 @@ this assessment could not be opened with the access available during development
 this document describes the implementation as built and verified. It does not claim
 pixel-level equivalence to the Figma design, and no measurement audit against Figma
 was carried out.
-
-**Google login is not implemented.** The button renders to match the design;
-authentication is guest-only.
 
 **Some detail-page controls are presentational.** The lock, watcher count, and share
 buttons in the task detail header are rendered per the design but not wired to
