@@ -1,15 +1,18 @@
-# Deployment — Render (API) + Netlify (Web)
+# Deployment — Render (API) + Vercel (Web)
 
 The two halves deploy as separate services from the same repository:
 
-| Part | Platform | Base directory |
+| Part | Platform | Root directory |
 |---|---|---|
 | NestJS API | Render — web service | `backend` |
-| Next.js app | Netlify — site | `frontend` |
+| Next.js app | Vercel — project | `frontend` |
 
 **Deploy the backend first.** The frontend needs the API URL at build time.
 
 Total time: roughly 20 minutes, most of it waiting on builds.
+
+> Vercel builds Next.js natively — no adapter or plugin is needed. The two
+> server-rendered routes (`/tasks/[id]`, `/projects/[id]`) work out of the box.
 
 ---
 
@@ -29,7 +32,7 @@ git push
 ### 0.2 Open MongoDB Atlas to the internet
 
 This is the single most common cause of a deploy that builds fine and then
-fails every request. Render and Netlify use dynamic IPs, and Atlas blocks
+fails every request. Render and Vercel use dynamic IPs, and Atlas blocks
 unknown addresses by default.
 
 1. Go to [cloud.mongodb.com](https://cloud.mongodb.com) → your cluster
@@ -129,49 +132,44 @@ connection works — not merely that the process started.
 > If you see 503, the database is unreachable — recheck Step 0.2 and the
 > credentials inside `DATABASE_URL`.
 
+### Setting up manually instead
+
+If you would rather not use the blueprint: **New → Web Service**, then set
+Root Directory `backend`, Build Command `npm ci && npm run build`, Start
+Command `npm run start:prod`, Health Check Path `/api/health`, and add every
+variable from the table above plus `NODE_VERSION=22`.
+
 ---
 
-## Step 2 — Frontend on Netlify
+## Step 2 — Frontend on Vercel
 
-Two files are already committed for this:
-[`frontend/netlify.toml`](frontend/netlify.toml) (build settings) and the
-`@netlify/plugin-nextjs` dev dependency, which provides server-side rendering.
+### 2.1 Import the project
 
-Your app has two server-rendered routes — `/tasks/[id]` and `/projects/[id]` —
-so the plugin is required. A plain static deploy would 404 on every task
-detail page.
+1. Sign in at [vercel.com](https://vercel.com)
+2. **Add New → Project**
+3. Connect GitHub, then **Import** the `Pyramid` repository
 
-### 2.1 Create the site
+### 2.2 Configure
 
-1. Sign in at [app.netlify.com](https://app.netlify.com)
-2. **Add new site → Import an existing project**
-3. **Deploy with GitHub**, authorise, and pick the `Pyramid` repository
-
-### 2.2 Configure the build
-
-Netlify shows a build settings screen. Set:
+Vercel shows a configuration screen before the first build. Set:
 
 | Field | Value |
 |---|---|
-| **Base directory** | `frontend` |
-| Build command | `npm run build` |
-| Publish directory | `frontend/.next` |
+| **Root Directory** | `frontend` |
+| Framework Preset | Next.js — detected automatically |
+| Build Command | leave default (`npm run build`) |
+| Output Directory | leave default |
+| Install Command | leave default |
 
-**Base directory is the critical one.** Left blank, Netlify builds from the
-repository root, finds no Next.js app, and fails immediately.
+**Root Directory is the critical one.** Click **Edit** next to it and select
+`frontend`. Left at the repository root, the build fails immediately because
+there is no Next.js app there.
 
-Once base directory is `frontend`, Netlify reads `netlify.toml` from there and
-picks up the command, publish path, plugin, and Node version automatically —
-so the other fields should populate themselves. Leave whatever it fills in.
-
-> Note on the two publish paths: the UI field is written relative to the
-> repository root (`frontend/.next`), while `publish` inside `netlify.toml` is
-> relative to the base directory (`.next`). Both point at the same folder.
-> The file wins, so there is nothing to reconcile by hand.
+Everything else is auto-detected — there is no config file to add.
 
 ### 2.3 Add the environment variable
 
-Before deploying, click **Add environment variables**:
+Expand **Environment Variables** and add:
 
 | Key | Value |
 |---|---|
@@ -182,13 +180,14 @@ Use your own Render URL from Step 1.4.
 **The `/api` suffix is required.** The API is mounted under that global prefix;
 omitting it makes every request 404.
 
+Leave it applied to all three environments (Production, Preview, Development).
+
 ### 2.4 Deploy
 
 Click **Deploy**. The first build takes 2–4 minutes.
 
-When it finishes, Netlify gives you a URL like
-`https://random-name-123456.netlify.app`. You can rename it under
-**Site configuration → Change site name**.
+Vercel gives you a URL like `https://pyramid-xxxx.vercel.app`. You can change
+it under **Settings → Domains**.
 
 **Keep this URL.** You need it in Step 3.
 
@@ -196,45 +195,45 @@ When it finishes, Netlify gives you a URL like
 
 ## Step 3 — Connect the two (CORS)
 
-The backend currently rejects requests from your Netlify domain. Fix it now.
+The backend currently rejects requests from your Vercel domain. Fix it now.
 
 1. Render dashboard → **pyramid-api** → **Environment**
-2. Edit `CORS_ORIGIN` to your exact Netlify URL:
+2. Edit `CORS_ORIGIN` to your exact Vercel URL:
 
 ```
-CORS_ORIGIN=https://your-site-name.netlify.app
+CORS_ORIGIN=https://your-project.vercel.app
 ```
 
 3. **Save changes** — Render restarts automatically (about a minute)
 
 ### Rules for this value
 
-- **No trailing slash.** `https://x.netlify.app/` fails; `https://x.netlify.app` works.
+- **No trailing slash.** `https://x.vercel.app/` fails; `https://x.vercel.app` works.
 - **Include `https://`.**
 - It must match the browser's origin exactly.
 
-To also allow Netlify's deploy previews, list origins comma-separated:
+Vercel gives every branch and pull request its own preview URL, which will hit
+CORS unless listed. To allow your main preview domain too:
 
 ```
-CORS_ORIGIN=https://your-site.netlify.app,https://deploy-preview-1--your-site.netlify.app
+CORS_ORIGIN=https://your-project.vercel.app,https://your-project-git-main-you.vercel.app
 ```
 
 ---
 
 ## Step 4 — Verify end to end
 
-1. Open your Netlify URL. The login screen renders.
+1. Open your Vercel URL. The login screen renders.
 2. Click **Continue as Guest** → you should land on `/tasks` with data.
 3. Create a task, then **reload the page**. If it is still there, the whole
-   chain works: browser → Netlify → Render → Atlas.
-4. Open a task to confirm the dynamic route renders (this is what the Netlify
-   plugin provides).
+   chain works: browser → Vercel → Render → Atlas.
+4. Open a task to confirm the dynamic route renders.
 
 Optionally, run the interaction suite against production:
 
 ```bash
 cd frontend
-APP_URL=https://your-site.netlify.app node test/ui-check.mjs
+APP_URL=https://your-project.vercel.app node test/ui-check.mjs
 ```
 
 > The first request after an idle period is slow — see below. Let the page
@@ -250,6 +249,8 @@ visit after a quiet spell can take over a minute; everything after is normal.
 
 If you are sharing this link with someone — an evaluator, say — open it
 yourself a minute beforehand so the service is warm when they arrive.
+
+**Vercel does not sleep.** Only the Render side has the cold-start delay.
 
 **The first health check can fail** if Atlas is still waking when the probe
 runs. Render retries. If the deploy is marked unhealthy, load `/api/health`
@@ -269,12 +270,12 @@ share the link widely — see improvement 9 in
 |---|---|
 | Render build fails: `Invalid environment configuration` | `DATABASE_URL` malformed or `JWT_SECRET` under 16 characters. The API validates at boot on purpose. |
 | `/api/health` returns 503 | Atlas unreachable. Recheck Network Access allows `0.0.0.0/0`, and the username/password inside the connection string. |
-| Netlify build fails instantly, "no package.json" | Base directory is not set to `frontend`. |
-| Site loads, but no tasks appear; console shows a CORS error | `CORS_ORIGIN` on Render does not exactly match the Netlify origin. Check for a trailing slash. |
+| Vercel build fails instantly, "no Next.js version detected" | Root Directory is not set to `frontend`. |
+| Site loads, but no tasks appear; console shows a CORS error | `CORS_ORIGIN` on Render does not exactly match the Vercel origin. Check for a trailing slash. |
 | Every API call returns 404 | `NEXT_PUBLIC_API_URL` is missing the `/api` suffix. |
-| Task detail pages 404 | `@netlify/plugin-nextjs` did not load — confirm `netlify.toml` is inside `frontend/` and the base directory is set. |
-| Changed the API URL, app still calls the old one | `NEXT_PUBLIC_*` values are inlined at build time. Trigger a redeploy: **Deploys → Trigger deploy → Clear cache and deploy site**. |
-| App is very slow on first load | Expected on free tiers. See the section above. |
+| Preview deployments hit CORS but production works | Preview URLs differ per branch — add them to `CORS_ORIGIN`. |
+| Changed the API URL, app still calls the old one | `NEXT_PUBLIC_*` values are inlined at build time. Redeploy: **Deployments → ⋯ → Redeploy**. |
+| App is very slow on first load | Expected — the Render backend is waking. See above. |
 | Data appears in a database called `test` | The database name is missing from `DATABASE_URL` — it belongs before the `?`. |
 
 ---
@@ -284,8 +285,9 @@ share the link widely — see improvement 9 in
 | File | Purpose |
 |---|---|
 | [`render.yaml`](render.yaml) | Render blueprint — service config, health check, env var declarations |
-| [`frontend/netlify.toml`](frontend/netlify.toml) | Netlify build command, publish path, Next.js plugin, Node version |
-| `@netlify/plugin-nextjs` | Dev dependency providing SSR for the two dynamic routes |
+
+Vercel needs no configuration file; Root Directory and the one environment
+variable are set in its dashboard.
 
 Secrets are never committed. Both `.env` files stay gitignored; the values live
 in each platform's dashboard.
